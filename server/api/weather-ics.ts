@@ -21,9 +21,11 @@ function generateUUID(): string {
 }
 
 function generateICS(days: WeatherDay[], city: string) {
+  // 使用中国时区获取当前时间
   const now = new Date()
-  const nowStr = now.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
-  const todayStr = now.toISOString().split('T')[0].replace(/-/g, '')
+  const chinaTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Shanghai"}))
+  const nowStr = chinaTime.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+  const todayStr = chinaTime.toISOString().split('T')[0].replace(/-/g, '')
   
   const lines = [
     'BEGIN:VCALENDAR',
@@ -45,9 +47,9 @@ function generateICS(days: WeatherDay[], city: string) {
       const uid = generateUUID()
       const summary = `${weatherToEmoji(day.text)} ${day.text} ${day.tempMin}°/${day.tempMax}°`
       
-      // 构建详细描述
+      // 构建详细描述，使用中国时区的时间
       const description = [
-        `⌚ 更新 ${now.toISOString().split('T')[0]} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`,
+        `⌚ 更新 ${chinaTime.toISOString().split('T')[0]} ${chinaTime.getHours().toString().padStart(2, '0')}:${chinaTime.getMinutes().toString().padStart(2, '0')}`,
         `${weatherToEmoji(day.text)} ${day.text}`,
         `🌡️ 温度 ${day.tempMin}°C ~ ${day.tempMax}°C`,
         `📍 地区 ${city}`
