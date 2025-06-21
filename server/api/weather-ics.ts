@@ -12,12 +12,59 @@ function weatherToEmoji(text: string) {
   return '🌡️'
 }
 
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
+
 function generateICS(days: WeatherDay[], city: string) {
+  const now = new Date()
+  const nowStr = now.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
+  const todayStr = now.toISOString().split('T')[0].replace(/-/g, '')
+  
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//weather-ics//CN',
-    ...days.map(day => `BEGIN:VEVENT\nSUMMARY:${weatherToEmoji(day.text)}${day.text} ${day.tempMin}~${day.tempMax}℃\nDTSTART;VALUE=DATE:${day.date.replace(/-/g, '')}\nDTEND;VALUE=DATE:${day.date.replace(/-/g, '')}\nDESCRIPTION:${city}天气 ${day.text} ${day.tempMin}~${day.tempMax}℃\nEND:VEVENT`),
+    'METHOD:PUBLISH',
+    'CLASS:PUBLIC',
+    'X-WR-CALDESC:7天天气预报',
+    'X-WR-CALNAME:天气预报',
+    'BEGIN:VTIMEZONE',
+    'TZID:Asia/Shanghai',
+    'BEGIN:STANDARD',
+    'DTSTART:19700101T000000',
+    'TZOFFSETFROM:+0800',
+    'TZOFFSETTO:+0800',
+    'END:STANDARD',
+    'END:VTIMEZONE',
+    ...days.map((day, index) => {
+      const eventDate = day.date.replace(/-/g, '')
+      const uid = generateUUID()
+      const summary = `${weatherToEmoji(day.text)} ${day.text} ${day.tempMin}°/${day.tempMax}°`
+      
+      // 构建详细描述
+      const description = [
+        `⌚ 更新 ${now.toISOString().split('T')[0]} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`,
+        `${weatherToEmoji(day.text)} ${day.text}`,
+        `🌡️ 温度 ${day.tempMin}°C ~ ${day.tempMax}°C`,
+        `📍 地区 ${city}`
+      ].join('\\n\\n')
+      
+      return [
+        'BEGIN:VEVENT',
+        `SUMMARY:${summary}`,
+        `DTSTART;VALUE=DATE:${eventDate}`,
+        `DTEND;VALUE=DATE:${eventDate}`,
+        `DTSTAMP;VALUE=DATE:${todayStr}`,
+        `UID:${uid}`,
+        `DESCRIPTION:${description}`,
+        `LOCATION:${city}`,
+        'END:VEVENT'
+      ].join('\n')
+    }),
     'END:VCALENDAR',
   ]
   return lines.join('\n')
@@ -28,9 +75,9 @@ export default defineEventHandler(async (event) => {
   let locationId = query.locationId as string | undefined
   let lat = query.lat as string | undefined
   let lon = query.lon as string | undefined
-  const city = (query.city as string) || ''
+  let city = (query.city as string) || ''
 
-  // 如果没有参数，自动通过IP获取经纬度
+  // 如果没有参数，自动通过IP获取经纬度和城市信息
   if (!locationId && (!lat || !lon)) {
     // 获取客户端IP
     let xff = event.node.req.headers['x-forwarded-for']
@@ -59,6 +106,15 @@ export default defineEventHandler(async (event) => {
           if (data.status === 'success' && data.lat && data.lon) {
             lat = String(data.lat)
             lon = String(data.lon)
+            
+            // 如果没有提供city参数，使用IP定位获取的城市信息
+            if (!city && data.city && data.regionName) {
+              city = `${data.city}, ${data.regionName}`
+            } else if (!city && data.city) {
+              city = data.city
+            } else if (!city && data.regionName) {
+              city = data.regionName
+            }
           }
         }
       } catch (e) {
@@ -73,6 +129,11 @@ export default defineEventHandler(async (event) => {
       statusCode: 400,
       statusMessage: 'Missing locationId or lat/lon'
     })
+  }
+  
+  // 如果仍然没有城市信息，使用默认值
+  if (!city) {
+    city = '未知地区'
   }
   
   try {
