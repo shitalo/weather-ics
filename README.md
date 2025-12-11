@@ -40,25 +40,18 @@
 
 ## 📋 环境变量配置
 
-### 必需环境变量
+> 所有环境变量的**大小写均不敏感**：  
+> - `GEO_API_PROVIDER` 会被统一转为小写后再判断  
+> - `USE_SERVER_NOMINATIM` 会把值转为小写字符串后再对比 `true`
 
-```bash
-# 和风天气API密钥（必需）
-HEFENG_API_KEY=your_hefeng_api_key_here
-```
+### 环境变量一览
 
-### 可选环境变量
-
-```bash
-# 地理编码API提供商（默认：hefeng）
-# 可选值：hefeng（和风天气GeoAPI）、nominatim（OpenStreetMap）
-GEO_API_PROVIDER=hefeng
-
-# 部署平台适配（可选，支持自动检测）
-# 手动设置：NITRO_PRESET=vercel 或 NITRO_PRESET=cloudflare
-# 自动检测：系统会根据部署平台自动选择合适的配置
-NITRO_PRESET=vercel
-```
+| 变量名 | 是否必需 | 默认值 | 示例值 | 说明 |
+|--------|----------|--------|--------|------|
+| `HEFENG_API_KEY` | ✅ 必需 | 无 | `your_hefeng_api_key_here` | 和风天气 API Key，用于获取 7 天预报数据 |
+| `GEO_API_PROVIDER` | ⭕ 可选 | `hefeng` | `hefeng` / `nominatim` | 地理编码提供商，支持和风 GeoAPI 或 OpenStreetMap Nominatim，值大小写不敏感（如 `NOMINATIM` 也可） |
+| `USE_SERVER_NOMINATIM` | ⭕ 可选 | `false` | `true` | 是否优先通过服务端代理访问 Nominatim，`true` / `false` 大小写不敏感，`true` 时先请求 `/api/nominatim`，失败再回退到浏览器直连 |
+| `NITRO_PRESET` | ⭕ 可选 | 自动检测 | `vercel` / `cloudflare` 等 | 手动指定 Nitro 部署预设，通常不需要设置，除非想覆盖自动检测结果 |
 
 ### 🎯 智能平台检测
 
@@ -94,6 +87,7 @@ pnpm install
 ```bash
 HEFENG_API_KEY=your_hefeng_api_key_here
 GEO_API_PROVIDER=hefeng
+USE_SERVER_NOMINATIM=false
 ```
 
 ### 4. 启动开发服务器

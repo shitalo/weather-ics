@@ -75,6 +75,7 @@ const validationError = ref('')
 const config = useRuntimeConfig()
 const hefengKey = config.public.hefengApiKey
 const geoApiProvider = config.public.geoApiProvider
+const useServerNominatim = config.public.useServerNominatim
 
 // 确保URL干净，没有查询参数
 onMounted(() => {
@@ -97,6 +98,58 @@ const chosenName = computed(() => {
   if (chosenItem.value.country) name += '，' + chosenItem.value.country
   return name
 })
+
+function mapNominatimCandidates(data: any) {
+  if (!Array.isArray(data) || !data.length) {
+    throw new Error('未找到该城市')
+  }
+  return data.map((item: any) => ({
+    id: item.place_id,
+    name: item.display_name,
+    lat: item.lat,
+    lon: item.lon,
+    adm1: item.address?.state || item.address?.region || item.address?.province,
+    adm2: item.address?.city || item.address?.county || item.address?.town || item.address?.village,
+    country: item.address?.country,
+    raw: item
+  }))
+}
+
+async function fetchNominatimData(url: string, label: string) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 10000)
+  try {
+    const res = await fetch(url, { signal: controller.signal })
+    if (!res.ok) {
+      throw new Error(`${label}错误: ${res.status}`)
+    }
+    const data = await res.json()
+    return mapNominatimCandidates(data)
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      throw new Error('请求超时，请检查网络连接')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+async function getNominatimCandidates(cityName: string) {
+  const q = encodeURIComponent(cityName)
+  // 根据环境变量决定是否走服务端代理
+  if (useServerNominatim) {
+    try {
+      return await fetchNominatimData(`/api/nominatim?q=${q}`, '服务端Nominatim')
+    } catch (serverError) {
+      console.warn('服务端Nominatim失败，尝试浏览器直连', serverError)
+      return await fetchNominatimData(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&addressdetails=1&limit=10`, 'Nominatim API')
+    }
+  } else {
+    // 默认：直接通过浏览器访问 Nominatim
+    return await fetchNominatimData(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&addressdetails=1&limit=10`, 'Nominatim API')
+  }
+}
 
 function validateInput() {
   if (!city.value.trim()) {
@@ -138,43 +191,8 @@ async function onSearch() {
   chosenItem.value = null
   
   try {
-    let data
     if (geoApiProvider === 'nominatim') {
-      // Nominatim API with timeout
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10秒超时
-      
-      try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city.value)}&format=json&addressdetails=1&limit=10`, {
-          signal: controller.signal
-        })
-        clearTimeout(timeoutId)
-        
-        if (!res.ok) {
-          throw new Error(`Nominatim API错误: ${res.status}`)
-        }
-        
-        data = await res.json()
-        console.log('Nominatim返回：', data)
-        
-        if (!Array.isArray(data) || !data.length) {
-          throw new Error('未找到该城市')
-        }
-        
-        candidates.value = data.map((item: any) => ({
-          id: item.place_id,
-          name: item.display_name,
-          lat: item.lat,
-          lon: item.lon,
-          raw: item
-        }))
-      } catch (fetchError: any) {
-        clearTimeout(timeoutId)
-        if (fetchError.name === 'AbortError') {
-          throw new Error('请求超时，请检查网络连接')
-        }
-        throw fetchError
-      }
+      candidates.value = await getNominatimCandidates(city.value)
     } else {
       // 和风GeoAPI with timeout
       const controller = new AbortController()
@@ -190,7 +208,7 @@ async function onSearch() {
           throw new Error(`和风天气API错误: ${res.status}`)
         }
         
-        data = await res.json()
+        const data = await res.json()
         console.log('和风天气GeoAPI返回：', data)
         
         if (data.code !== '200' || !data.location?.length) {
