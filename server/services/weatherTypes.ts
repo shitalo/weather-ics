@@ -7,4 +7,6 @@ export interface WeatherDay {
   icon?: string
   wind?: string
   code?: string
+  sunrise?: string // 日出时间，格式：HH:mm
+  sunset?: string  // 日落时间，格式：HH:mm
 } 

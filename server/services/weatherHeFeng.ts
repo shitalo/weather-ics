@@ -48,6 +48,8 @@ export async function getWeather7d({ locationId, lat, lon }: { locationId?: stri
       icon: d.iconDay,
       wind: d.windDirDay,
       code: d.iconDay,
+      sunrise: d.sunrise || undefined, // 日出时间
+      sunset: d.sunset || undefined,  // 日落时间
     }))
   } catch (error: any) {
     if (error.name === 'AbortError') {
@@ -163,6 +165,8 @@ async function getHistoricalWeather(locationId: string, date: string): Promise<W
         icon: icon,
         wind: wind,
         code: icon,
+        sunrise: data.weatherDaily.sunrise || undefined, // 日出时间
+        sunset: data.weatherDaily.sunset || undefined,   // 日落时间
       }
     }
     

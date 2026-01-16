@@ -48,12 +48,29 @@ function generateICS(days: WeatherDay[], city: string) {
       const summary = `${weatherToEmoji(day.text)} ${day.text} ${day.tempMin}°/${day.tempMax}°`
       
       // 构建详细描述，使用中国时区的时间
-      const description = [
+      const descriptionParts = [
         `⌚ 更新 ${chinaTime.toISOString().split('T')[0]} ${chinaTime.getHours().toString().padStart(2, '0')}:${chinaTime.getMinutes().toString().padStart(2, '0')}`,
         `${weatherToEmoji(day.text)} ${day.text}`,
-        `🌡️ 温度 ${day.tempMin}°C ~ ${day.tempMax}°C`,
-        `📍 地区 ${city}`
-      ].join('\\n\\n')
+        `🌡️ 温度 ${day.tempMin}°C ~ ${day.tempMax}°C`
+      ]
+      
+      // 添加日出日落时间（如果有）
+      if (day.sunrise || day.sunset) {
+        const timeInfo = []
+        if (day.sunrise) {
+          timeInfo.push(`🌅 日出 ${day.sunrise}`)
+        }
+        if (day.sunset) {
+          timeInfo.push(`🌇 日落 ${day.sunset}`)
+        }
+        if (timeInfo.length > 0) {
+          descriptionParts.push(timeInfo.join(' | '))
+        }
+      }
+      
+      descriptionParts.push(`📍 地区 ${city}`)
+      
+      const description = descriptionParts.join('\\n\\n')
       
       return [
         'BEGIN:VEVENT',
