@@ -1,4 +1,4 @@
-import { getWeather7d } from '../services/weatherHeFeng'
+import { getWeather7d, getHistoricalWeather10d } from '../services/weatherHeFeng'
 import type { WeatherDay } from '../services/weatherTypes'
 
 function weatherToEmoji(text: string) {
@@ -139,8 +139,37 @@ export default defineEventHandler(async (event) => {
   }
   
   try {
-    const days = await getWeather7d({ locationId, lat, lon })
-    const ics = generateICS(days, city)
+    // 并行获取未来7天预报和历史10天数据
+    const [futureDays, historicalDays] = await Promise.all([
+      getWeather7d({ locationId, lat, lon }),
+      getHistoricalWeather10d({ locationId, lat, lon }).catch(err => {
+        // 历史数据获取失败不影响主流程
+        console.warn('获取历史天气数据失败，仅使用未来预报:', err.message)
+        return []
+      })
+    ])
+    
+    // 合并历史数据和未来数据，优先保留未来预报数据
+    const dayMap = new Map<string, WeatherDay>()
+    
+    // 先添加未来预报数据（优先级高）
+    futureDays.forEach(day => {
+      dayMap.set(day.date, day)
+    })
+    
+    // 再添加历史数据（只添加不重复的日期）
+    historicalDays.forEach(day => {
+      if (!dayMap.has(day.date)) {
+        dayMap.set(day.date, day)
+      }
+    })
+    
+    // 转换为数组并按日期排序
+    const sortedDays = Array.from(dayMap.values()).sort((a, b) => 
+      a.date.localeCompare(b.date)
+    )
+    
+    const ics = generateICS(sortedDays, city)
     setHeader(event, 'Content-Type', 'text/calendar; charset=utf-8')
     return ics
   } catch (error: any) {
