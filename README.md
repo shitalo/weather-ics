@@ -42,7 +42,7 @@
 
 > 所有环境变量的**大小写均不敏感**：  
 > - `GEO_API_PROVIDER` 会被统一转为小写后再判断  
-> - `USE_SERVER_NOMINATIM` 会把值转为小写字符串后再对比 `true`
+> - `USE_SERVER_NOMINATIM` 会把值转为小写字符串后再对比（支持 `true` / `false` / `auto`）
 
 ### 环境变量一览
 
@@ -50,7 +50,7 @@
 |--------|----------|--------|--------|------|
 | `HEFENG_API_KEY` | ✅ 必需 | 无 | `your_hefeng_api_key_here` | 和风天气 API Key，用于获取 7 天预报数据 |
 | `GEO_API_PROVIDER` | ⭕ 可选 | `hefeng` | `hefeng` / `nominatim` | 地理编码提供商，支持和风 GeoAPI 或 OpenStreetMap Nominatim，值大小写不敏感（如 `NOMINATIM` 也可） |
-| `USE_SERVER_NOMINATIM` | ⭕ 可选 | `false` | `true` | 是否优先通过服务端代理访问 Nominatim，`true` / `false` 大小写不敏感，`true` 时先请求 `/api/nominatim`，失败再回退到浏览器直连 |
+| `USE_SERVER_NOMINATIM` | ⭕ 可选 | `false` | `true` / `false` / `auto` | 是否通过服务端代理访问 Nominatim，值大小写不敏感：<br/>- `false`：默认值，直接通过浏览器访问 Nominatim<br/>- `true`：优先通过服务端代理（`/api/nominatim`），失败回退到浏览器直连<br/>- `auto`：自动检测网络，能访问境外网站则浏览器直连，否则使用服务端代理 |
 | `NITRO_PRESET` | ⭕ 可选 | 自动检测 | `vercel` / `cloudflare` 等 | 手动指定 Nitro 部署预设，通常不需要设置，除非想覆盖自动检测结果 |
 
 ### 🎯 智能平台检测
@@ -88,6 +88,10 @@ pnpm install
 HEFENG_API_KEY=your_hefeng_api_key_here
 GEO_API_PROVIDER=hefeng
 USE_SERVER_NOMINATIM=false
+# 可选值说明：
+# - false: 直接通过浏览器访问 Nominatim（默认）
+# - true: 优先通过服务端代理访问 Nominatim
+# - auto: 自动检测网络，智能选择连接方式
 ```
 
 ### 4. 启动开发服务器
@@ -191,7 +195,8 @@ pnpm preview
 2. **导入项目**到Vercel，自动识别Nuxt
 3. **配置环境变量**：
    - `HEFENG_API_KEY`（必需）
-   - `GEO_API_PROVIDER`（可选）
+   - `GEO_API_PROVIDER`（可选，默认：`hefeng`）
+   - `USE_SERVER_NOMINATIM`（可选，默认：`false`，支持 `auto` 自动检测）
    - `NITRO_PRESET=vercel`（可选，系统会自动检测）
 
 **注意**：Vercel会自动设置 `VERCEL` 环境变量，系统会自动检测并配置为 `vercel` preset。

@@ -34,8 +34,12 @@ const normalizedGeoProvider = ['hefeng', 'nominatim'].includes(rawGeoProvider)
   ? rawGeoProvider
   : 'hefeng'
 
-const normalizedUseServerNominatim =
-  (process.env.USE_SERVER_NOMINATIM || '').toString().toLowerCase() === 'true'
+// 支持 'true', 'false', 'auto' 三种选项
+// 统一为字符串类型以便在 runtimeConfig 中使用
+const rawUseServerNominatim = (process.env.USE_SERVER_NOMINATIM || 'false').toString().toLowerCase()
+const normalizedUseServerNominatim = ['true', 'false', 'auto'].includes(rawUseServerNominatim)
+  ? rawUseServerNominatim
+  : 'false'
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
@@ -51,12 +55,13 @@ export default defineNuxtConfig({
   runtimeConfig: {
     hefengApiKey: process.env.HEFENG_API_KEY,
     geoApiProvider: normalizedGeoProvider,
-    useServerNominatim: normalizedUseServerNominatim,
     public: {
       hefengApiKey: process.env.HEFENG_API_KEY,
       geoApiProvider: normalizedGeoProvider,
       // 是否通过服务端代理访问 Nominatim，默认 false（浏览器直连）
-      useServerNominatim: normalizedUseServerNominatim
+      // 可选值：'true'（服务端代理）、'false'（浏览器直连）、'auto'（自动检测）
+      // 使用类型断言以支持字符串类型
+      useServerNominatim: normalizedUseServerNominatim as any
     }
   }
 })

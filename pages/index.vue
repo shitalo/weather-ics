@@ -77,6 +77,10 @@ const hefengKey = config.public.hefengApiKey
 const geoApiProvider = config.public.geoApiProvider
 const useServerNominatim = config.public.useServerNominatim
 
+// 检测结果缓存（在内存中，页面刷新后重置）
+let networkCheckCache: boolean | null = null
+let networkCheckPromise: Promise<boolean> | null = null
+
 // 确保URL干净，没有查询参数
 onMounted(() => {
   if (window.history && window.history.replaceState && window.location.search) {
@@ -135,19 +139,95 @@ async function fetchNominatimData(url: string, label: string) {
   }
 }
 
+/**
+ * 检测浏览器是否能访问境外网站（用于判断是否使用浏览器直连）
+ * 使用 Google DNS 作为检测目标（快速且可靠）
+ */
+async function checkOverseasNetworkAccess(): Promise<boolean> {
+  // 如果已有缓存结果，直接返回
+  if (networkCheckCache !== null) {
+    return networkCheckCache
+  }
+  
+  // 如果正在检测中，等待检测完成
+  if (networkCheckPromise) {
+    return networkCheckPromise
+  }
+  
+  // 开始检测
+  networkCheckPromise = (async () => {
+    try {
+      // 使用 Google DNS API 作为检测目标（快速且不需要实际访问完整页面）
+      // 使用较短的超时时间，避免影响用户体验
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 2000) // 2秒超时
+      
+      const res = await fetch('https://dns.google/resolve?name=google.com&type=A', {
+        method: 'GET',
+        signal: controller.signal,
+        cache: 'no-store'
+      })
+      
+      clearTimeout(timeoutId)
+      
+      // 如果能成功访问（即使返回错误状态码也算能访问）
+      const canAccess = res.ok || res.status === 400 // 400 也可能表示能访问但请求格式问题
+      networkCheckCache = canAccess
+      return canAccess
+    } catch (error) {
+      // 检测失败，默认认为不能访问，使用服务端代理
+      networkCheckCache = false
+      return false
+    } finally {
+      networkCheckPromise = null
+    }
+  })()
+  
+  return networkCheckPromise
+}
+
 async function getNominatimCandidates(cityName: string) {
   const q = encodeURIComponent(cityName)
+  const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${q}&format=json&addressdetails=1&limit=10`
+  
   // 根据环境变量决定是否走服务端代理
-  if (useServerNominatim) {
+  // useServerNominatim 可以是 true, false, 或 'auto'
+  const serverNominatimMode = String(useServerNominatim).toLowerCase()
+  
+  if (serverNominatimMode === 'true') {
+    // 强制使用服务端代理
     try {
       return await fetchNominatimData(`/api/nominatim?q=${q}`, '服务端Nominatim')
     } catch (serverError) {
       console.warn('服务端Nominatim失败，尝试浏览器直连', serverError)
-      return await fetchNominatimData(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&addressdetails=1&limit=10`, 'Nominatim API')
+      return await fetchNominatimData(nominatimUrl, 'Nominatim API')
+    }
+  } else if (serverNominatimMode === 'auto') {
+    // 自动模式：先检测网络，再决定使用哪种方式
+    const canAccessOverseas = await checkOverseasNetworkAccess()
+    
+    if (canAccessOverseas) {
+      // 可以访问境外网站，使用浏览器直连
+      try {
+        return await fetchNominatimData(nominatimUrl, 'Nominatim API')
+      } catch (browserError) {
+        // 浏览器直连失败，回退到服务端代理
+        console.warn('浏览器直连Nominatim失败，尝试服务端代理', browserError)
+        return await fetchNominatimData(`/api/nominatim?q=${q}`, '服务端Nominatim')
+      }
+    } else {
+      // 不能访问境外网站，使用服务端代理
+      try {
+        return await fetchNominatimData(`/api/nominatim?q=${q}`, '服务端Nominatim')
+      } catch (serverError) {
+        // 服务端代理失败，尝试浏览器直连（可能是网络暂时问题）
+        console.warn('服务端Nominatim失败，尝试浏览器直连', serverError)
+        return await fetchNominatimData(nominatimUrl, 'Nominatim API')
+      }
     }
   } else {
     // 默认：直接通过浏览器访问 Nominatim
-    return await fetchNominatimData(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&addressdetails=1&limit=10`, 'Nominatim API')
+    return await fetchNominatimData(nominatimUrl, 'Nominatim API')
   }
 }
 
