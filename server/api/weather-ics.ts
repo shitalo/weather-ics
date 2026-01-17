@@ -5,8 +5,8 @@ function weatherToEmoji(text: string) {
   if (text.includes('晴')) return '☀️'
   if (text.includes('雨')) return '🌧️'
   if (text.includes('雪')) return '❄️'
-  if (text.includes('阴')) return '🌥️'
-  if (text.includes('云')) return '☁️'
+  if (text.includes('阴')) return '☁️'   // 阴天：阴云密布
+  if (text.includes('云')) return '🌥️'   // 多云：云遮太阳
   if (text.includes('雷')) return '⛈️'
   if (text.includes('雾')) return '🌫️'
   return '🌡️'
@@ -23,17 +23,39 @@ function generateUUID(): string {
 function generateICS(days: WeatherDay[], city: string) {
   // 使用中国时区获取当前时间
   const now = new Date()
-  const chinaTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Shanghai"}))
-  const nowStr = chinaTime.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
-  const todayStr = chinaTime.toISOString().split('T')[0].replace(/-/g, '')
+  
+  // 使用 en-US 获取上海时区的日期和时间
+  const dateFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+  
+  // 使用 formatToParts 获取日期各部分
+  const dateParts = dateFormatter.formatToParts(now)
+  const year = dateParts.find(p => p.type === 'year')?.value || ''
+  const month = dateParts.find(p => p.type === 'month')?.value || ''
+  const day = dateParts.find(p => p.type === 'day')?.value || ''
+  const hour = dateParts.find(p => p.type === 'hour')?.value || ''
+  const minute = dateParts.find(p => p.type === 'minute')?.value || ''
+  
+  const todayStr = `${year}${month}${day}` // yyyyMMdd
+  const dateStr = `${year}-${month}-${day}` // yyyy-MM-dd
+  const timeForDesc = `${hour}:${minute}` // HH:mm 格式，用于描述
+  const timeForNowStr = `${hour}${minute}` // HHmm 格式
+  const nowStr = `${todayStr}T${timeForNowStr}00+08:00`.replace(/[:\-]/g, '') // yyyyMMddTHHmmss+0800
   
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'METHOD:PUBLISH',
     'CLASS:PUBLIC',
-    'X-WR-CALDESC:7天天气预报',
-    'X-WR-CALNAME:天气预报',
+    'X-WR-CALDESC:天气晴朗日历',
+    'X-WR-CALNAME:天气晴朗日历',
     'BEGIN:VTIMEZONE',
     'TZID:Asia/Shanghai',
     'BEGIN:STANDARD',
@@ -49,7 +71,7 @@ function generateICS(days: WeatherDay[], city: string) {
       
       // 构建详细描述，使用中国时区的时间
       const descriptionParts = [
-        `⌚ 更新 ${chinaTime.toISOString().split('T')[0]} ${chinaTime.getHours().toString().padStart(2, '0')}:${chinaTime.getMinutes().toString().padStart(2, '0')}`,
+        `🔄 更新 ${dateStr} ${timeForDesc}`,
         `${weatherToEmoji(day.text)} ${day.text}`,
         `🌡️ 温度 ${day.tempMin}°C ~ ${day.tempMax}°C`
       ]

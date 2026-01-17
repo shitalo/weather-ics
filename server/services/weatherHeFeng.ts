@@ -211,14 +211,19 @@ export async function getHistoricalWeather10d({ locationId, lat, lon }: { locati
     const targetDate = new Date(now)
     targetDate.setDate(targetDate.getDate() - i)
     
-    // 使用上海时区格式化日期为 yyyyMMdd 格式
-    const formatter = new Intl.DateTimeFormat('en-CA', {
+    // 使用 en-US 和上海时区格式化日期为 yyyyMMdd 格式
+    const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Asia/Shanghai',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
     })
-    const dateStr = formatter.format(targetDate).replace(/-/g, '')
+    // 使用 formatToParts 获取日期各部分，手动格式化为 yyyyMMdd
+    const dateParts = formatter.formatToParts(targetDate)
+    const year = dateParts.find(p => p.type === 'year')?.value || ''
+    const month = dateParts.find(p => p.type === 'month')?.value || ''
+    const day = dateParts.find(p => p.type === 'day')?.value || ''
+    const dateStr = `${year}${month}${day}` // yyyyMMdd
     
     dates.push(dateStr)
   }
