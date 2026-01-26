@@ -41,6 +41,12 @@ const normalizedUseServerNominatim = ['true', 'false', 'auto'].includes(rawUseSe
   ? rawUseServerNominatim
   : 'false'
 
+// 是否显示历史数据，默认 false（不显示）
+const rawShowHistoricalData = (process.env.SHOW_HISTORICAL_DATA || 'false').toString().toLowerCase()
+const normalizedShowHistoricalData = ['true', 'false'].includes(rawShowHistoricalData)
+  ? rawShowHistoricalData === 'true'
+  : false
+
 export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
   devtools: { enabled: true },
@@ -55,6 +61,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     hefengApiKey: process.env.HEFENG_API_KEY,
     geoApiProvider: normalizedGeoProvider,
+    // 是否显示历史数据，默认 false（不显示）
+    showHistoricalData: normalizedShowHistoricalData,
     public: {
       hefengApiKey: process.env.HEFENG_API_KEY,
       geoApiProvider: normalizedGeoProvider,
