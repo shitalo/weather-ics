@@ -11,6 +11,7 @@
 - **现代化UI**：响应式设计，支持移动端和桌面端
 - **一键复制**：快速复制订阅链接到剪贴板
 - **多平台部署**：支持Vercel、Cloudflare等平台部署
+- **数据缓存**：可选MySQL数据库缓存功能，自动保存历史天气数据，支持查看过去30天的缓存数据
 
 ## 🏗️ 技术架构
 
@@ -24,6 +25,7 @@
 - **和风天气API** - 天气预报数据源
 - **Nominatim API** - 地理编码服务（可选）
 - **ip-api.com** - IP地理位置服务
+- **MySQL数据库** - 天气数据缓存（可选）
 
 ## 🔧 工作原理
 
@@ -43,7 +45,8 @@
 > 所有环境变量的**大小写均不敏感**：  
 > - `GEO_API_PROVIDER` 会被统一转为小写后再判断  
 > - `USE_SERVER_NOMINATIM` 会把值转为小写字符串后再对比（支持 `true` / `false` / `auto`）  
-> - `SHOW_HISTORICAL_DATA` 会把值转为小写字符串后再对比（支持 `true` / `false`）
+> - `SHOW_HISTORICAL_DATA` 会把值转为小写字符串后再对比（支持 `true` / `false`）  
+> - MySQL 相关环境变量（`MYSQL_HOST`、`MYSQL_USER` 等）直接使用原始值
 
 ### 环境变量一览
 
@@ -53,6 +56,11 @@
 | `GEO_API_PROVIDER` | ⭕ 可选 | `hefeng` | `hefeng` / `nominatim` | 地理编码提供商，支持和风 GeoAPI 或 OpenStreetMap Nominatim，值大小写不敏感（如 `NOMINATIM` 也可） |
 | `USE_SERVER_NOMINATIM` | ⭕ 可选 | `false` | `true` / `false` / `auto` | 是否通过服务端代理访问 Nominatim，值大小写不敏感：<br/>- `false`：默认值，直接通过浏览器访问 Nominatim<br/>- `true`：优先通过服务端代理（`/api/nominatim`），失败回退到浏览器直连<br/>- `auto`：自动检测网络，能访问境外网站则浏览器直连，否则使用服务端代理 |
 | `SHOW_HISTORICAL_DATA` | ⭕ 可选 | `false` | `true` / `false` | 是否显示历史天气数据，值大小写不敏感：<br/>- `false`：默认值，不显示历史数据，仅显示未来 7 天预报<br/>- `true`：显示历史 10 天数据和未来 7 天预报 |
+| `MYSQL_HOST` | ⭕ 可选 | 无 | `localhost` / `192.168.1.100` | MySQL 数据库主机地址，配置后启用天气数据缓存功能 |
+| `MYSQL_PORT` | ⭕ 可选 | `3306` | `3306` | MySQL 数据库端口 |
+| `MYSQL_USER` | ⭕ 可选 | 无 | `root` | MySQL 数据库用户名 |
+| `MYSQL_PASSWORD` | ⭕ 可选 | 无 | `your_password` | MySQL 数据库密码 |
+| `MYSQL_DATABASE` | ⭕ 可选 | 无 | `weather_ics` | MySQL 数据库名称 |
 | `NITRO_PRESET` | ⭕ 可选 | 自动检测 | `vercel` / `cloudflare` 等 | 手动指定 Nitro 部署预设，通常不需要设置，除非想覆盖自动检测结果 |
 
 ### 🎯 智能平台检测
@@ -91,6 +99,16 @@ HEFENG_API_KEY=your_hefeng_api_key_here
 GEO_API_PROVIDER=hefeng
 USE_SERVER_NOMINATIM=false
 SHOW_HISTORICAL_DATA=false
+
+# MySQL数据库配置（可选，用于缓存天气数据）
+# 如果配置了MySQL，系统会自动保存用户查询的天气数据到数据库
+# 当启用历史数据时，会优先从数据库读取缓存的历史数据
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=your_password
+MYSQL_DATABASE=weather_ics
+
 # 可选值说明：
 # USE_SERVER_NOMINATIM:
 #   - false: 直接通过浏览器访问 Nominatim（默认）
@@ -101,7 +119,33 @@ SHOW_HISTORICAL_DATA=false
 #   - true: 显示历史10天数据和未来7天预报
 ```
 
-### 4. 启动开发服务器
+### 4. 初始化数据库（可选）
+
+如果配置了MySQL数据库，需要先创建数据库和表结构：
+
+```bash
+# 1. 登录MySQL
+mysql -u root -p
+
+# 2. 创建数据库
+CREATE DATABASE IF NOT EXISTS weather_ics CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+# 3. 使用数据库
+USE weather_ics;
+
+# 4. 执行初始化SQL脚本（项目根目录下的 database/init.sql）
+# 或者在MySQL客户端中执行：
+SOURCE database/init.sql;
+```
+
+或者直接执行SQL文件：
+```bash
+mysql -u root -p weather_ics < database/init.sql
+```
+
+**注意**：如果不配置MySQL数据库，应用仍然可以正常运行，只是不会缓存天气数据。
+
+### 5. 启动开发服务器
 
 ```bash
 # 本地开发
@@ -111,7 +155,7 @@ pnpm dev
 pnpm dev:lan
 ```
 
-### 5. 构建生产版本
+### 6. 构建生产版本
 
 ```bash
 pnpm build
@@ -205,6 +249,7 @@ pnpm preview
    - `GEO_API_PROVIDER`（可选，默认：`hefeng`）
    - `USE_SERVER_NOMINATIM`（可选，默认：`false`，支持 `auto` 自动检测）
    - `SHOW_HISTORICAL_DATA`（可选，默认：`false`，是否显示历史数据）
+   - `MYSQL_HOST`、`MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_DATABASE`（可选，用于启用数据缓存功能）
    - `NITRO_PRESET=vercel`（可选，系统会自动检测）
 
 **注意**：Vercel会自动设置 `VERCEL` 环境变量，系统会自动检测并配置为 `vercel` preset。
@@ -259,13 +304,33 @@ weather-ics/
 │   └── index.vue          # 首页
 ├── server/
 │   ├── api/
-│   │   └── weather-ics.ts # ICS API接口
-│   └── services/
-│       ├── weatherHeFeng.ts # 和风天气服务
-│       └── weatherTypes.ts  # 类型定义
+│   │   ├── weather-ics.ts # ICS API接口
+│   │   └── nominatim.ts   # Nominatim代理接口
+│   ├── services/
+│   │   ├── weatherHeFeng.ts # 和风天气服务
+│   │   ├── weatherTypes.ts  # 类型定义
+│   │   └── database.ts      # MySQL数据库服务
+│   └── utils/
+│       └── db-init.ts       # 数据库初始化插件
+├── database/
+│   └── init.sql            # 数据库表结构SQL脚本
 ├── nuxt.config.ts         # Nuxt配置
 └── package.json           # 项目依赖
 ```
+
+### 数据库缓存功能
+
+项目支持可选的MySQL数据库缓存功能：
+
+1. **自动保存**：当用户通过API查询天气时，系统会自动将天气数据保存到数据库
+2. **历史查询**：当启用 `SHOW_HISTORICAL_DATA=true` 时，系统会优先从数据库读取历史缓存数据
+3. **数据更新**：如果数据库中已有相同经纬度和日期的数据，会自动更新为最新数据
+4. **容错处理**：数据库连接失败不会影响主流程，应用会继续正常运行
+
+**数据库表结构**：
+- `weather_cache` 表存储天气数据
+- 唯一索引：`(lat, lon, date)` 确保每个位置每天只有一条记录
+- 自动时间戳：`created_at` 和 `updated_at` 字段自动记录创建和更新时间
 
 ### 添加新的天气服务
 

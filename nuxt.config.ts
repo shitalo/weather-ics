@@ -63,6 +63,12 @@ export default defineNuxtConfig({
     geoApiProvider: normalizedGeoProvider,
     // 是否显示历史数据，默认 false（不显示）
     showHistoricalData: normalizedShowHistoricalData,
+    // MySQL数据库配置
+    mysqlHost: process.env.MYSQL_HOST,
+    mysqlPort: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT) : 3306,
+    mysqlUser: process.env.MYSQL_USER,
+    mysqlPassword: process.env.MYSQL_PASSWORD,
+    mysqlDatabase: process.env.MYSQL_DATABASE,
     public: {
       hefengApiKey: process.env.HEFENG_API_KEY,
       geoApiProvider: normalizedGeoProvider,

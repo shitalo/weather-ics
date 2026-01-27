@@ -1,5 +1,6 @@
 import { getWeather7d, getHistoricalWeather10d } from '../services/weatherHeFeng'
 import type { WeatherDay } from '../services/weatherTypes'
+import { saveWeatherData, getCachedWeatherData } from '../services/database'
 
 function weatherToEmoji(text: string) {
   if (text.includes('晴')) return '☀️'
@@ -181,42 +182,91 @@ export default defineEventHandler(async (event) => {
     const config = useRuntimeConfig()
     const showHistoricalData = config.showHistoricalData ?? false
     
+    // 确保有经纬度才能保存到数据库
+    const hasLatLon = lat && lon
+    
     // 获取未来7天预报
     const futureDays = await getWeather7d({ locationId, lat, lon })
     
-    let sortedDays: WeatherDay[] = []
+    // 异步保存天气数据到数据库（不阻塞主流程）
+    if (hasLatLon && config.mysqlHost) {
+      saveWeatherData(lat!, lon!, city, futureDays).catch(err => {
+        console.warn('保存天气数据到数据库失败:', err.message)
+      })
+    }
     
-    if (showHistoricalData) {
-      // 如果启用历史数据，并行获取历史10天数据
+    // 使用Map来合并数据，确保每个日期只有一条记录
+    const dayMap = new Map<string, WeatherDay>()
+    
+    // 先添加未来预报数据（优先级高）
+    futureDays.forEach(day => {
+      dayMap.set(day.date, day)
+    })
+    
+    // 如果配置了数据库，从数据库获取该经纬度的历史缓存数据
+    let cachedDays: WeatherDay[] = []
+    if (hasLatLon && config.mysqlHost) {
+      try {
+        // 获取今天之前的所有缓存数据（不限制天数，获取所有历史数据）
+        // 计算今天的日期（使用上海时区）
+        const today = new Date()
+        const dateFormatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'Asia/Shanghai',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        })
+        
+        const todayParts = dateFormatter.formatToParts(today)
+        const todayYear = todayParts.find(p => p.type === 'year')?.value || ''
+        const todayMonth = todayParts.find(p => p.type === 'month')?.value || ''
+        const todayDay = todayParts.find(p => p.type === 'day')?.value || ''
+        const todayDate = `${todayYear}-${todayMonth}-${todayDay}`
+        
+        // 获取今天之前的所有历史数据（使用 < 而不是 <=，排除今天）
+        // 不设置startDate，获取所有历史数据
+        cachedDays = await getCachedWeatherData(lat!, lon!, undefined, todayDate)
+        
+        console.log(`从数据库获取到 ${cachedDays.length} 条历史缓存数据（经纬度: ${lat}, ${lon}，截止日期: ${todayDate}）`)
+      } catch (err: any) {
+        console.warn('从数据库获取缓存数据失败:', err.message)
+      }
+    }
+    
+    // 如果启用了历史数据功能且数据库没有数据，尝试从API获取
+    if (showHistoricalData && cachedDays.length === 0) {
       const historicalDays = await getHistoricalWeather10d({ locationId, lat, lon }).catch(err => {
         // 历史数据获取失败不影响主流程
         console.warn('获取历史天气数据失败，仅使用未来预报:', err.message)
         return []
       })
       
-      // 合并历史数据和未来数据，优先保留未来预报数据
-      const dayMap = new Map<string, WeatherDay>()
+      // 将API获取的历史数据也保存到数据库
+      if (hasLatLon && config.mysqlHost && historicalDays.length > 0) {
+        saveWeatherData(lat!, lon!, city, historicalDays).catch(err => {
+          console.warn('保存历史天气数据到数据库失败:', err.message)
+        })
+      }
       
-      // 先添加未来预报数据（优先级高）
-      futureDays.forEach(day => {
-        dayMap.set(day.date, day)
-      })
-      
-      // 再添加历史数据（只添加不重复的日期）
+      // 添加历史数据（只添加不重复的日期）
       historicalDays.forEach(day => {
         if (!dayMap.has(day.date)) {
           dayMap.set(day.date, day)
         }
       })
-      
-      // 转换为数组并按日期排序
-      sortedDays = Array.from(dayMap.values()).sort((a, b) => 
-        a.date.localeCompare(b.date)
-      )
-    } else {
-      // 不显示历史数据，只使用未来预报
-      sortedDays = futureDays
+    } else if (cachedDays.length > 0) {
+      // 使用数据库缓存的历史数据（无论是否启用showHistoricalData）
+      cachedDays.forEach(day => {
+        if (!dayMap.has(day.date)) {
+          dayMap.set(day.date, day)
+        }
+      })
     }
+    
+    // 转换为数组并按日期排序
+    const sortedDays = Array.from(dayMap.values()).sort((a, b) => 
+      a.date.localeCompare(b.date)
+    )
     
     const ics = generateICS(sortedDays, city)
     setHeader(event, 'Content-Type', 'text/calendar; charset=utf-8')
