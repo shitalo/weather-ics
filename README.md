@@ -45,7 +45,7 @@
 > 所有环境变量的**大小写均不敏感**：  
 > - `GEO_API_PROVIDER` 会被统一转为小写后再判断  
 > - `USE_SERVER_NOMINATIM` 会把值转为小写字符串后再对比（支持 `true` / `false` / `auto`）  
-> - `SHOW_HISTORICAL_DATA` 会把值转为小写字符串后再对比（支持 `true` / `false`）  
+> - `ENABLE_DATABASE_CACHE` 会把值转为小写字符串后再对比（支持 `true` / `false`）  
 > - MySQL 相关环境变量（`MYSQL_HOST`、`MYSQL_USER` 等）直接使用原始值
 
 ### 环境变量一览
@@ -55,8 +55,8 @@
 | `HEFENG_API_KEY` | ✅ 必需 | 无 | `your_hefeng_api_key_here` | 和风天气 API Key，用于获取 7 天预报数据 |
 | `GEO_API_PROVIDER` | ⭕ 可选 | `hefeng` | `hefeng` / `nominatim` | 地理编码提供商，支持和风 GeoAPI 或 OpenStreetMap Nominatim，值大小写不敏感（如 `NOMINATIM` 也可） |
 | `USE_SERVER_NOMINATIM` | ⭕ 可选 | `false` | `true` / `false` / `auto` | 是否通过服务端代理访问 Nominatim，值大小写不敏感：<br/>- `false`：默认值，直接通过浏览器访问 Nominatim<br/>- `true`：优先通过服务端代理（`/api/nominatim`），失败回退到浏览器直连<br/>- `auto`：自动检测网络，能访问境外网站则浏览器直连，否则使用服务端代理 |
-| `SHOW_HISTORICAL_DATA` | ⭕ 可选 | `false` | `true` / `false` | 是否显示历史天气数据，值大小写不敏感：<br/>- `false`：默认值，不显示历史数据，仅显示未来 7 天预报<br/>- `true`：显示历史 10 天数据和未来 7 天预报 |
-| `MYSQL_HOST` | ⭕ 可选 | 无 | `localhost` / `192.168.1.100` | MySQL 数据库主机地址，配置后启用天气数据缓存功能 |
+| `ENABLE_DATABASE_CACHE` | ⭕ 可选 | `false` | `true` / `false` | 是否启用数据库缓存功能，值大小写不敏感：<br/>- `false`：默认值，不启用数据库缓存功能<br/>- `true`：启用数据库缓存功能，自动保存和读取天气数据<br/>**注意**：需要同时配置 MySQL 相关环境变量才能生效 |
+| `MYSQL_HOST` | ⭕ 可选 | 无 | `localhost` / `192.168.1.100` | MySQL 数据库主机地址 |
 | `MYSQL_PORT` | ⭕ 可选 | `3306` | `3306` | MySQL 数据库端口 |
 | `MYSQL_USER` | ⭕ 可选 | 无 | `root` | MySQL 数据库用户名 |
 | `MYSQL_PASSWORD` | ⭕ 可选 | 无 | `your_password` | MySQL 数据库密码 |
@@ -98,11 +98,12 @@ pnpm install
 HEFENG_API_KEY=your_hefeng_api_key_here
 GEO_API_PROVIDER=hefeng
 USE_SERVER_NOMINATIM=false
-SHOW_HISTORICAL_DATA=false
+ENABLE_DATABASE_CACHE=false
 
 # MySQL数据库配置（可选，用于缓存天气数据）
-# 如果配置了MySQL，系统会自动保存用户查询的天气数据到数据库
-# 当启用历史数据时，会优先从数据库读取缓存的历史数据
+# 需要同时设置 ENABLE_DATABASE_CACHE=true 才能启用数据库缓存功能
+# 启用后，系统会自动保存用户查询的天气数据到数据库
+# 生成ICS时会自动从数据库读取该经纬度的历史缓存数据
 MYSQL_HOST=localhost
 MYSQL_PORT=3306
 MYSQL_USER=root
@@ -114,9 +115,9 @@ MYSQL_DATABASE=weather_ics
 #   - false: 直接通过浏览器访问 Nominatim（默认）
 #   - true: 优先通过服务端代理访问 Nominatim
 #   - auto: 自动检测网络，智能选择连接方式
-# SHOW_HISTORICAL_DATA:
-#   - false: 不显示历史数据，仅显示未来7天预报（默认）
-#   - true: 显示历史10天数据和未来7天预报
+# ENABLE_DATABASE_CACHE:
+#   - false: 不启用数据库缓存功能（默认）
+#   - true: 启用数据库缓存功能，需要同时配置 MySQL 相关环境变量
 ```
 
 ### 4. 初始化数据库（可选）
@@ -248,7 +249,6 @@ pnpm preview
    - `HEFENG_API_KEY`（必需）
    - `GEO_API_PROVIDER`（可选，默认：`hefeng`）
    - `USE_SERVER_NOMINATIM`（可选，默认：`false`，支持 `auto` 自动检测）
-   - `SHOW_HISTORICAL_DATA`（可选，默认：`false`，是否显示历史数据）
    - `MYSQL_HOST`、`MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_DATABASE`（可选，用于启用数据缓存功能）
    - `NITRO_PRESET=vercel`（可选，系统会自动检测）
 
@@ -322,10 +322,17 @@ weather-ics/
 
 项目支持可选的MySQL数据库缓存功能：
 
+**启用条件**：需要同时满足以下条件：
+- 设置环境变量 `ENABLE_DATABASE_CACHE=true`
+- 配置 MySQL 相关环境变量（`MYSQL_HOST`、`MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_DATABASE`）
+
+**功能特性**：
+
 1. **自动保存**：当用户通过API查询天气时，系统会自动将天气数据保存到数据库
-2. **历史查询**：当启用 `SHOW_HISTORICAL_DATA=true` 时，系统会优先从数据库读取历史缓存数据
+2. **历史查询**：生成ICS时会自动从数据库读取该经纬度的历史缓存数据，与未来7天预报合并展示
 3. **数据更新**：如果数据库中已有相同经纬度和日期的数据，会自动更新为最新数据
 4. **容错处理**：数据库连接失败不会影响主流程，应用会继续正常运行
+5. **灵活控制**：即使配置了数据库，也可以通过 `ENABLE_DATABASE_CACHE=false` 来禁用缓存功能
 
 **数据库表结构**：
 - `weather_cache` 表存储天气数据

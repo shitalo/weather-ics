@@ -197,25 +197,37 @@ export async function getCachedWeatherData(
   }
 
   try {
+    // 处理同一经纬度、同一天存在多条数据的情况
+    // 选择每个日期的最新记录（按 updated_at 降序，如果相同则按 id 降序）
+    // 使用LEFT JOIN方式，兼容MySQL 5.6+，性能优于相关子查询
     let sql = `
-      SELECT date, text, temp_min, temp_max, wind, sunrise, sunset
-      FROM weather_cache
-      WHERE lat = ? AND lon = ?
+      SELECT w1.date, w1.text, w1.temp_min, w1.temp_max, w1.wind, w1.sunrise, w1.sunset
+      FROM weather_cache w1
+      LEFT JOIN weather_cache w2 
+        ON w1.lat = w2.lat 
+        AND w1.lon = w2.lon 
+        AND w1.date = w2.date
+        AND (
+          w2.updated_at > w1.updated_at 
+          OR (w2.updated_at = w1.updated_at AND w2.id > w1.id)
+        )
+      WHERE w1.lat = ? AND w1.lon = ?
+        AND w2.id IS NULL
     `
     const params: any[] = [latNum, lonNum]
 
     if (startDate) {
-      sql += ' AND date >= ?'
+      sql += ' AND w1.date >= ?'
       params.push(startDate)
     }
 
     if (endDate) {
       // 使用 < 而不是 <=，确保不包含结束日期当天的数据
-      sql += ' AND date < ?'
+      sql += ' AND w1.date < ?'
       params.push(endDate)
     }
 
-    sql += ' ORDER BY date ASC'
+    sql += ' ORDER BY w1.date ASC'
 
     const [rows] = await pool.execute(sql, params) as any[]
 

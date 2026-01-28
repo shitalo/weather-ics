@@ -41,10 +41,10 @@ const normalizedUseServerNominatim = ['true', 'false', 'auto'].includes(rawUseSe
   ? rawUseServerNominatim
   : 'false'
 
-// 是否显示历史数据，默认 false（不显示）
-const rawShowHistoricalData = (process.env.SHOW_HISTORICAL_DATA || 'false').toString().toLowerCase()
-const normalizedShowHistoricalData = ['true', 'false'].includes(rawShowHistoricalData)
-  ? rawShowHistoricalData === 'true'
+// 是否启用数据库缓存功能，默认 false（不启用）
+const rawEnableDatabaseCache = (process.env.ENABLE_DATABASE_CACHE || 'false').toString().toLowerCase()
+const normalizedEnableDatabaseCache = ['true', 'false'].includes(rawEnableDatabaseCache)
+  ? rawEnableDatabaseCache === 'true'
   : false
 
 export default defineNuxtConfig({
@@ -61,8 +61,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     hefengApiKey: process.env.HEFENG_API_KEY,
     geoApiProvider: normalizedGeoProvider,
-    // 是否显示历史数据，默认 false（不显示）
-    showHistoricalData: normalizedShowHistoricalData,
+    // 是否启用数据库缓存功能，默认 false（不启用）
+    enableDatabaseCache: normalizedEnableDatabaseCache,
     // MySQL数据库配置
     mysqlHost: process.env.MYSQL_HOST,
     mysqlPort: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT) : 3306,
