@@ -72,6 +72,8 @@ export default defineNuxtConfig({
     mysqlUser: process.env.MYSQL_USER,
     mysqlPassword: process.env.MYSQL_PASSWORD,
     mysqlDatabase: process.env.MYSQL_DATABASE,
+    // 历史天气数据最大天数，默认31天
+    maxHistoryDays: process.env.MAX_HISTORY_DAYS ? parseInt(process.env.MAX_HISTORY_DAYS) : 31,
     public: {
       hefengApiKey: process.env.HEFENG_API_KEY,
       // 和风天气API Host（可选），前端也需要使用
