@@ -301,7 +301,10 @@ export default defineEventHandler(async (event) => {
             if (timeDiff <= thirtyMinutes) {
               // 数据有效，使用缓存数据
               const cachedTimeStr = formatChinaDateTime(cachedTime)
-              console.log(`[缓存命中] 使用数据库缓存数据 - 经纬度: (${lat}, ${lon}), 更新时间: ${cachedTimeStr} (${cachedTime.toISOString()}), 数据条数: ${cachedDaysFromToday.length}, 数据日期范围: ${cachedDaysFromToday[0]?.date} ~ ${cachedDaysFromToday[cachedDaysFromToday.length - 1]?.date}`)
+              // 统一日期格式显示
+              const minDate = cachedDaysFromToday[0]?.date.replace(/-/g, '') || ''
+              const maxDate = cachedDaysFromToday[cachedDaysFromToday.length - 1]?.date.replace(/-/g, '') || ''
+              console.log(`[缓存命中] 使用数据库缓存数据 - 经纬度: (${lat}, ${lon}), 更新时间: ${cachedTimeStr} (${cachedTime.toISOString()}), 数据条数: ${cachedDaysFromToday.length}, 数据日期范围: ${minDate} ~ ${maxDate}`)
               futureDays = cachedDaysFromToday.map(day => {
                 // 标记数据来自缓存，确保updatedAt是Date对象
                 return {
@@ -339,7 +342,10 @@ export default defineEventHandler(async (event) => {
       console.log(`[API调用] 开始从和风天气API获取数据 - locationId: ${locationId || 'N/A'}, lat: ${lat || 'N/A'}, lon: ${lon || 'N/A'}`)
       try {
         futureDays = await getWeather7d({ locationId, lat, lon })
-        console.log(`[API调用] 成功获取数据 - 数据条数: ${futureDays.length}, 数据日期范围: ${futureDays[0]?.date} ~ ${futureDays[futureDays.length - 1]?.date}`)
+        // 统一日期格式显示
+        const minDate = futureDays[0]?.date.replace(/-/g, '') || ''
+        const maxDate = futureDays[futureDays.length - 1]?.date.replace(/-/g, '') || ''
+        console.log(`[API调用] 成功获取数据 - 数据条数: ${futureDays.length}, 数据日期范围: ${minDate} ~ ${maxDate}`)
       } catch (apiErr: any) {
         console.error(`[API错误] 和风天气API调用失败 - 错误信息: ${apiErr.message}`)
         console.error(`[API错误] 错误堆栈:`, apiErr.stack)
@@ -380,7 +386,20 @@ export default defineEventHandler(async (event) => {
         
         console.log(`[历史数据查询] 查询完成 - 返回数据条数: ${cachedDays.length}, 经纬度: (${lat}, ${lon}), 截止日期: ${todayDate}`)
         if (cachedDays.length > 0) {
-          console.log(`[历史数据查询] 数据日期范围: ${cachedDays[0]?.date} ~ ${cachedDays[cachedDays.length - 1]?.date}`)
+          // 确保日期格式统一为 YYYYMMDD，并正确显示范围
+          const dates = cachedDays.map(d => d.date).filter(Boolean)
+          if (dates.length > 0) {
+            // 按日期排序（确保格式统一）
+            const sortedDates = dates.sort((a, b) => {
+              // 统一格式为 YYYYMMDD 进行比较
+              const dateA = a.replace(/-/g, '')
+              const dateB = b.replace(/-/g, '')
+              return dateA.localeCompare(dateB)
+            })
+            const minDate = sortedDates[0]
+            const maxDate = sortedDates[sortedDates.length - 1]
+            console.log(`[历史数据查询] 数据日期范围: ${minDate} ~ ${maxDate} (共${dates.length}条)`)
+          }
         }
         
         // 使用数据库缓存的历史数据，标记为来自缓存，确保updatedAt是Date对象
@@ -411,9 +430,13 @@ export default defineEventHandler(async (event) => {
     }
     
     // 转换为数组并按日期排序
-    const sortedDays = Array.from(dayMap.values()).sort((a, b) => 
-      a.date.localeCompare(b.date)
-    )
+    // 确保日期格式统一为 YYYYMMDD 格式进行比较
+    const sortedDays = Array.from(dayMap.values()).sort((a, b) => {
+      // 统一格式为 YYYYMMDD 进行比较
+      const dateA = a.date.replace(/-/g, '')
+      const dateB = b.date.replace(/-/g, '')
+      return dateA.localeCompare(dateB)
+    })
     
     // 统计数据来源
     const cacheCount = sortedDays.filter(d => d.fromCache).length
@@ -421,7 +444,10 @@ export default defineEventHandler(async (event) => {
     
     console.log(`[数据汇总] 最终数据统计 - 总条数: ${sortedDays.length}, 来自缓存: ${cacheCount}条, 来自API: ${apiCount}条`)
     if (sortedDays.length > 0) {
-      console.log(`[数据汇总] 数据日期范围: ${sortedDays[0]?.date} ~ ${sortedDays[sortedDays.length - 1]?.date}`)
+      // 统一日期格式显示（YYYYMMDD）
+      const minDate = sortedDays[0]?.date.replace(/-/g, '') || ''
+      const maxDate = sortedDays[sortedDays.length - 1]?.date.replace(/-/g, '') || ''
+      console.log(`[数据汇总] 数据日期范围: ${minDate} ~ ${maxDate}`)
     }
     
     console.log(`[ICS生成] 开始生成ICS文件 - 城市: ${city}, 数据条数: ${sortedDays.length}`)
