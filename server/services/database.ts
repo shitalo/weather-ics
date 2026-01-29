@@ -3,11 +3,14 @@ import mysql from 'mysql2/promise'
 // 数据库连接池
 let pool: mysql.Pool | null = null
 
+// 时区常量：统一使用中国时区
+const DB_TIMEZONE = '+08:00' // 中国时区 UTC+8
+
 // 初始化数据库连接池
 export function initDatabase(config?: any) {
   const runtimeConfig = config || useRuntimeConfig()
   
-  const dbConfig = {
+  const dbConfig: mysql.PoolOptions = {
     host: runtimeConfig.mysqlHost || 'localhost',
     port: runtimeConfig.mysqlPort || 3306,
     user: runtimeConfig.mysqlUser || 'root',
@@ -18,16 +21,29 @@ export function initDatabase(config?: any) {
     queueLimit: 0,
     enableKeepAlive: true,
     keepAliveInitialDelay: 0,
+    // 在连接池配置中直接指定时区，所有连接都会使用此时区
+    timezone: DB_TIMEZONE, // '+08:00' 中国时区
   }
 
   try {
     pool = mysql.createPool(dbConfig)
-    console.log('MySQL连接池初始化成功')
+    console.log(`[数据库连接] MySQL连接池初始化成功，时区设置: ${DB_TIMEZONE} (Asia/Shanghai)`)
+    
+    // 在连接池初始化后，设置一个测试连接的时区，确保时区设置可用
+    // 注意：由于连接池的特性，我们需要在使用连接时设置时区
+    // 这里只是验证连接池可用
     return pool
   } catch (error) {
-    console.error('MySQL连接池初始化失败:', error)
+    console.error('[数据库连接] MySQL连接池初始化失败:', error)
     throw error
   }
+}
+
+// 注意：时区已在连接池配置中设置，无需在每个连接上单独设置
+// 保留此函数仅作为备用（如果需要动态设置时区）
+async function ensureTimezone(connection: mysql.PoolConnection): Promise<void> {
+  // 由于时区已在连接池配置中设置，此函数现在不需要执行任何操作
+  // 但保留函数签名以保持代码兼容性
 }
 
 // 获取数据库连接池
@@ -72,10 +88,11 @@ export async function initTables() {
   `
 
   try {
+    // 时区已在连接池配置中设置，直接执行SQL
     await pool.execute(createTableSQL)
-    console.log('数据库表初始化成功')
+    console.log('[数据库初始化] 数据库表初始化成功')
   } catch (error) {
-    console.error('数据库表初始化失败:', error)
+    console.error('[数据库初始化] 数据库表初始化失败:', error)
     throw error
   }
 }
@@ -112,7 +129,9 @@ export async function saveWeatherData(
   }
 
   try {
+    console.log(`[数据库保存] 开始保存天气数据 - lat: ${latNum}, lon: ${lonNum}, city: ${city}, 数据条数: ${weatherDays.length}`)
     // 使用事务批量插入或更新
+    // 时区已在连接池配置中设置，无需单独设置
     const connection = await pool.getConnection()
     
     try {
@@ -124,6 +143,9 @@ export async function saveWeatherData(
           ? `${day.date.substring(0, 4)}-${day.date.substring(4, 6)}-${day.date.substring(6, 8)}`
           : day.date
 
+        // 使用NOW()函数获取当前时间，MySQL会根据服务器时区处理
+        // 为了确保时区一致性，我们也可以显式设置会话时区，但为了兼容性，这里使用CURRENT_TIMESTAMP
+        // MySQL的TIMESTAMP会根据服务器时区自动转换，我们需要确保服务器时区设置正确
         const insertSQL = `
           INSERT INTO weather_cache 
             (lat, lon, city, date, text, temp_min, temp_max, wind, sunrise, sunset)
@@ -154,15 +176,17 @@ export async function saveWeatherData(
       }
 
       await connection.commit()
-      console.log(`成功保存 ${weatherDays.length} 条天气数据到数据库`)
+      console.log(`[数据库保存] 成功保存 ${weatherDays.length} 条天气数据到数据库 - lat: ${latNum}, lon: ${lonNum}, city: ${city}`)
     } catch (error) {
       await connection.rollback()
+      console.error(`[数据库保存] 事务回滚 - lat: ${latNum}, lon: ${lonNum}, 错误信息: ${error instanceof Error ? error.message : String(error)}`)
       throw error
     } finally {
       connection.release()
     }
   } catch (error: any) {
-    console.error('保存天气数据到数据库失败:', error.message)
+    console.error(`[数据库保存] 保存天气数据到数据库失败 - lat: ${latNum}, lon: ${lonNum}, city: ${city}, 错误信息: ${error.message}`)
+    console.error(`[数据库保存] 错误堆栈:`, error.stack)
     // 不抛出错误，避免影响主流程
   }
 }
@@ -183,6 +207,7 @@ export async function getCachedWeatherData(
   code?: string
   sunrise?: string
   sunset?: string
+  updatedAt?: Date
 }>> {
   const pool = getPool()
   if (!pool) {
@@ -201,7 +226,7 @@ export async function getCachedWeatherData(
     // 选择每个日期的最新记录（按 updated_at 降序，如果相同则按 id 降序）
     // 使用LEFT JOIN方式，兼容MySQL 5.6+，性能优于相关子查询
     let sql = `
-      SELECT w1.date, w1.text, w1.temp_min, w1.temp_max, w1.wind, w1.sunrise, w1.sunset
+      SELECT w1.date, w1.text, w1.temp_min, w1.temp_max, w1.wind, w1.sunrise, w1.sunset, w1.updated_at
       FROM weather_cache w1
       LEFT JOIN weather_cache w2 
         ON w1.lat = w2.lat 
@@ -229,7 +254,10 @@ export async function getCachedWeatherData(
 
     sql += ' ORDER BY w1.date ASC'
 
+    console.log(`[数据库查询] 执行SQL查询历史数据 - lat: ${latNum}, lon: ${lonNum}, startDate: ${startDate || 'N/A'}, endDate: ${endDate || 'N/A'}`)
+    // 时区已在连接池配置中设置，直接执行查询
     const [rows] = await pool.execute(sql, params) as any[]
+    console.log(`[数据库查询] SQL查询完成 - 返回行数: ${Array.isArray(rows) ? rows.length : 0}`)
 
     const result = rows.map((row: any) => {
       // 处理日期格式：MySQL的DATE类型可能返回Date对象或字符串
@@ -255,6 +283,14 @@ export async function getCachedWeatherData(
         }
       }
       
+      // 处理更新时间
+      let updatedAt: Date | undefined = undefined
+      if (row.updated_at) {
+        updatedAt = row.updated_at instanceof Date 
+          ? row.updated_at 
+          : new Date(row.updated_at)
+      }
+      
       return {
         date: dateStr,
         text: row.text || '',
@@ -262,14 +298,136 @@ export async function getCachedWeatherData(
         tempMax: row.temp_max || '',
         wind: row.wind || undefined,
         sunrise: row.sunrise || undefined,
-        sunset: row.sunset || undefined
+        sunset: row.sunset || undefined,
+        updatedAt: updatedAt
       }
     })
     
+    console.log(`[数据库查询] 数据处理完成 - 结果条数: ${result.length}`)
     return result
   } catch (error: any) {
-    console.error('从数据库获取天气数据失败:', error.message)
+    console.error(`[数据库错误] 从数据库获取天气数据失败 - lat: ${lat}, lon: ${lon}, startDate: ${startDate || 'N/A'}, endDate: ${endDate || 'N/A'}, 错误信息: ${error.message}`)
+    console.error(`[数据库错误] 错误堆栈:`, error.stack)
     return []
+  }
+}
+
+// 从数据库获取今日及之后的天气数据，并返回更新时间信息
+export async function getCachedWeatherDataFromToday(
+  lat: string,
+  lon: string,
+  todayDate: string
+): Promise<{
+  data: Array<{
+    date: string
+    text: string
+    tempMin: string
+    tempMax: string
+    icon?: string
+    wind?: string
+    code?: string
+    sunrise?: string
+    sunset?: string
+    updatedAt?: Date
+  }>
+  latestUpdateTime: Date | null // 返回最新的更新时间
+}> {
+  const pool = getPool()
+  if (!pool) {
+    // 连接池未初始化，抛出异常让上层代码回退到API
+    console.error(`[数据库] 连接池未初始化 - lat: ${lat}, lon: ${lon}, todayDate: ${todayDate}`)
+    throw new Error('数据库连接池未初始化')
+  }
+
+  const latNum = parseFloat(lat)
+  const lonNum = parseFloat(lon)
+
+  if (isNaN(latNum) || isNaN(lonNum)) {
+    // 参数无效，返回空数据（这不是数据库错误）
+    console.warn(`[数据库] 参数无效 - lat: ${lat}, lon: ${lon}, todayDate: ${todayDate}`)
+    return { data: [], latestUpdateTime: null }
+  }
+
+  try {
+    console.log(`[数据库查询] 执行SQL查询今日及之后数据 - lat: ${latNum}, lon: ${lonNum}, todayDate: ${todayDate}`)
+    // 获取今日及之后的数据，同时获取最新的更新时间
+    let sql = `
+      SELECT w1.date, w1.text, w1.temp_min, w1.temp_max, w1.wind, w1.sunrise, w1.sunset, w1.updated_at
+      FROM weather_cache w1
+      LEFT JOIN weather_cache w2 
+        ON w1.lat = w2.lat 
+        AND w1.lon = w2.lon 
+        AND w1.date = w2.date
+        AND (
+          w2.updated_at > w1.updated_at 
+          OR (w2.updated_at = w1.updated_at AND w2.id > w1.id)
+        )
+      WHERE w1.lat = ? AND w1.lon = ?
+        AND w1.date >= ?
+        AND w2.id IS NULL
+      ORDER BY w1.date ASC
+    `
+    const params: any[] = [latNum, lonNum, todayDate]
+
+    // 时区已在连接池配置中设置，直接执行查询
+    const [rows] = await pool.execute(sql, params) as any[]
+    console.log(`[数据库查询] SQL查询完成 - 返回行数: ${Array.isArray(rows) ? rows.length : 0}`)
+
+    let latestUpdateTime: Date | null = null as Date | null
+
+    const result = rows.map((row: any) => {
+      // 处理日期格式：MySQL的DATE类型可能返回Date对象或字符串
+      let dateStr = ''
+      if (row.date instanceof Date) {
+        const year = row.date.getFullYear()
+        const month = String(row.date.getMonth() + 1).padStart(2, '0')
+        const day = String(row.date.getDate()).padStart(2, '0')
+        dateStr = `${year}${month}${day}`
+      } else if (typeof row.date === 'string') {
+        dateStr = row.date.replace(/-/g, '')
+      } else {
+        const dateStrRaw = String(row.date)
+        if (dateStrRaw.includes('-')) {
+          dateStr = dateStrRaw.replace(/-/g, '')
+        } else {
+          dateStr = dateStrRaw
+        }
+      }
+
+      // 处理更新时间
+      let updatedAt: Date | undefined = undefined
+      if (row.updated_at) {
+        updatedAt = row.updated_at instanceof Date 
+          ? row.updated_at 
+          : new Date(row.updated_at)
+        if (updatedAt instanceof Date && (!latestUpdateTime || updatedAt > latestUpdateTime)) {
+          latestUpdateTime = updatedAt
+        }
+      }
+      
+      return {
+        date: dateStr,
+        text: row.text || '',
+        tempMin: row.temp_min || '',
+        tempMax: row.temp_max || '',
+        wind: row.wind || undefined,
+        sunrise: row.sunrise || undefined,
+        sunset: row.sunset || undefined,
+        updatedAt: updatedAt
+      }
+    })
+    
+    const latestUpdateTimeStr: string = latestUpdateTime !== null 
+      ? latestUpdateTime.toISOString() 
+      : 'N/A'
+    console.log(`[数据库查询] 数据处理完成 - 结果条数: ${result.length}, 最新更新时间: ${latestUpdateTimeStr}`)
+    return { data: result, latestUpdateTime }
+  } catch (error: any) {
+    // 数据库连接失败、超时等真正的错误应该抛出异常，让上层代码能够回退到API
+    // 而不是静默返回空数据
+    console.error(`[数据库错误] 从数据库获取今日天气数据失败 - lat: ${lat}, lon: ${lon}, todayDate: ${todayDate}, 错误信息: ${error.message}`)
+    console.error(`[数据库错误] 错误堆栈:`, error.stack)
+    throw error // 重新抛出异常，让上层代码能够捕获并回退到API
   }
 }
 

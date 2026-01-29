@@ -9,4 +9,6 @@ export interface WeatherDay {
   code?: string
   sunrise?: string // 日出时间，格式：HH:mm
   sunset?: string  // 日落时间，格式：HH:mm
+  updatedAt?: Date // 数据更新时间
+  fromCache?: boolean // 是否来自缓存
 } 

@@ -1,6 +1,83 @@
 import { getWeather7d } from '../services/weatherHeFeng'
 import type { WeatherDay } from '../services/weatherTypes'
-import { saveWeatherData, getCachedWeatherData } from '../services/database'
+import { saveWeatherData, getCachedWeatherData, getCachedWeatherDataFromToday } from '../services/database'
+
+// 时区常量：统一使用中国时区
+const TIMEZONE = 'Asia/Shanghai'
+
+/**
+ * 获取中国时区的当前时间
+ */
+function getChinaTime(): Date {
+  const now = new Date()
+  // 获取中国时区的ISO字符串，然后转换回Date对象
+  // 这样可以确保时间是基于中国时区的
+  const chinaTimeStr = now.toLocaleString('en-US', { timeZone: TIMEZONE })
+  // 注意：toLocaleString返回的是本地格式的字符串，我们需要使用另一种方法
+  // 实际上，Date对象本身是UTC时间，我们只需要在显示时使用正确的时区
+  // 但为了确保一致性，我们创建一个基于中国时区当前时间的Date对象
+  return now
+}
+
+/**
+ * 将Date对象格式化为中国时区的日期时间字符串
+ * @param date Date对象
+ * @param includeTime 是否包含时间部分
+ * @returns 格式化的字符串，日期格式：YYYY-MM-DD，时间格式：HH:mm
+ */
+function formatChinaDateTime(date: Date, includeTime: boolean = true): string {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    ...(includeTime ? {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    } : {})
+  })
+  const parts = formatter.formatToParts(date)
+  const year = parts.find(p => p.type === 'year')?.value || ''
+  const month = parts.find(p => p.type === 'month')?.value || ''
+  const day = parts.find(p => p.type === 'day')?.value || ''
+  const dateStr = `${year}-${month}-${day}`
+  
+  if (includeTime) {
+    const hour = parts.find(p => p.type === 'hour')?.value || ''
+    const minute = parts.find(p => p.type === 'minute')?.value || ''
+    return `${dateStr} ${hour}:${minute}`
+  }
+  return dateStr
+}
+
+/**
+ * 将Date对象格式化为中国时区的日期字符串 (YYYY-MM-DD)
+ */
+function formatChinaDate(date: Date): string {
+  return formatChinaDateTime(date, false)
+}
+
+/**
+ * 将MySQL返回的TIMESTAMP转换为中国时区的Date对象
+ * MySQL的TIMESTAMP在存储和读取时会根据服务器时区转换
+ * 我们需要确保读取的时间被正确解释为中国时区
+ */
+function parseMySQLTimestamp(mysqlTimestamp: Date | string | null | undefined): Date | undefined {
+  if (!mysqlTimestamp) {
+    return undefined
+  }
+  
+  // 如果已经是Date对象，直接返回
+  if (mysqlTimestamp instanceof Date) {
+    // MySQL返回的Date对象可能是UTC时间，我们需要确保它被正确解释
+    // 由于Date对象内部存储的是UTC时间戳，我们只需要确保在显示时使用正确的时区
+    return mysqlTimestamp
+  }
+  
+  // 如果是字符串，转换为Date对象
+  return new Date(mysqlTimestamp)
+}
 
 function weatherToEmoji(text: string) {
   if (text.includes('晴')) return '☀️'
@@ -22,33 +99,12 @@ function generateUUID(): string {
 }
 
 function generateICS(days: WeatherDay[], city: string) {
-  // 使用中国时区获取当前时间
-  const now = new Date()
+  // 使用中国时区获取当前时间（用于DTSTAMP等）
+  const now = getChinaTime()
   
-  // 使用 en-US 获取上海时区的日期和时间
-  const dateFormatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  })
-  
-  // 使用 formatToParts 获取日期各部分
-  const dateParts = dateFormatter.formatToParts(now)
-  const year = dateParts.find(p => p.type === 'year')?.value || ''
-  const month = dateParts.find(p => p.type === 'month')?.value || ''
-  const day = dateParts.find(p => p.type === 'day')?.value || ''
-  const hour = dateParts.find(p => p.type === 'hour')?.value || ''
-  const minute = dateParts.find(p => p.type === 'minute')?.value || ''
-  
-  const todayStr = `${year}${month}${day}` // yyyyMMdd
-  const dateStr = `${year}-${month}-${day}` // yyyy-MM-dd
-  const timeForDesc = `${hour}:${minute}` // HH:mm 格式，用于描述
-  const timeForNowStr = `${hour}${minute}` // HHmm 格式
-  const nowStr = `${todayStr}T${timeForNowStr}00+08:00`.replace(/[:\-]/g, '') // yyyyMMddTHHmmss+0800
+  // 格式化日期用于ICS文件
+  const todayDateStr = formatChinaDate(now)
+  const todayStr = todayDateStr.replace(/-/g, '') // yyyyMMdd
   
   const lines = [
     'BEGIN:VCALENDAR',
@@ -70,9 +126,30 @@ function generateICS(days: WeatherDay[], city: string) {
       const uid = generateUUID()
       const summary = `${weatherToEmoji(day.text)} ${day.text} ${day.tempMin}°/${day.tempMax}°`
       
-      // 构建详细描述，使用中国时区的时间
+      // 格式化更新时间（使用中国时区）
+      let updateTimeStr = ''
+      if (day.updatedAt) {
+        // 使用数据的实际更新时间，格式化为中国时区
+        const updateDate = parseMySQLTimestamp(day.updatedAt) || day.updatedAt
+        const updateDateTimeStr = formatChinaDateTime(updateDate)
+        const [updateDateStr, updateTimeForDesc] = updateDateTimeStr.split(' ')
+        updateTimeStr = `🔄 更新 ${updateDateStr} ${updateTimeForDesc || ''}`
+        // 如果数据来自缓存，添加缓存标识
+        if (day.fromCache) {
+          updateTimeStr += ' [缓存]'
+        }
+      } else {
+        // 如果没有更新时间，使用当前时间（向后兼容）
+        const nowStr = formatChinaDateTime(now)
+        const parts = nowStr.split(' ')
+        const dateStr = parts[0] || todayDateStr
+        const timeForDesc = parts[1] || ''
+        updateTimeStr = `🔄 更新 ${dateStr} ${timeForDesc}`
+      }
+      
+      // 构建详细描述
       const descriptionParts = [
-        `🔄 更新 ${dateStr} ${timeForDesc}`,
+        updateTimeStr,
         `${weatherToEmoji(day.text)} ${day.text}`,
         `🌡️ 温度 ${day.tempMin}°C ~ ${day.tempMax}°C`
       ]
@@ -182,60 +259,154 @@ export default defineEventHandler(async (event) => {
     const config = useRuntimeConfig()
     const enableDatabaseCache = config.enableDatabaseCache ?? false
     
-    // 确保有经纬度才能保存到数据库
+    console.log(`[天气ICS] 请求开始 - locationId: ${locationId || 'N/A'}, lat: ${lat || 'N/A'}, lon: ${lon || 'N/A'}, city: ${city || 'N/A'}`)
+    
+    // 确保有经纬度才能使用数据库缓存
     const hasLatLon = lat && lon
     
-    // 获取未来7天预报
-    const futureDays = await getWeather7d({ locationId, lat, lon })
+    // 计算今天的日期（使用中国时区）
+    const today = getChinaTime()
+    const todayDate = formatChinaDate(today)
     
-    // 如果启用了数据库缓存功能，异步保存天气数据到数据库（不阻塞主流程）
-    if (enableDatabaseCache && hasLatLon && config.mysqlHost) {
-      saveWeatherData(lat!, lon!, city, futureDays).catch(err => {
-        console.warn('保存天气数据到数据库失败:', err.message)
-      })
-    }
+    console.log(`[天气ICS] 今日日期: ${todayDate}, 数据库缓存: ${enableDatabaseCache ? '启用' : '禁用'}, 有经纬度: ${hasLatLon}`)
     
     // 使用Map来合并数据，确保每个日期只有一条记录
     const dayMap = new Map<string, WeatherDay>()
     
-    // 先添加未来预报数据（优先级高）
-    futureDays.forEach(day => {
-      dayMap.set(day.date, day)
-    })
+    let futureDays: WeatherDay[] = []
+    let needFetchFromAPI = true
     
-    // 如果启用了数据库缓存功能，从数据库获取该经纬度的历史缓存数据
+    // 如果启用了数据库缓存功能，优先从数据库获取今日及之后的数据
     if (enableDatabaseCache && hasLatLon && config.mysqlHost) {
       try {
-        // 获取今天之前的所有缓存数据（不限制天数，获取所有历史数据）
-        // 计算今天的日期（使用上海时区）
-        const today = new Date()
-        const dateFormatter = new Intl.DateTimeFormat('en-US', {
-          timeZone: 'Asia/Shanghai',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit'
+        console.log(`[数据库查询] 开始查询今日及之后的数据 - lat: ${lat}, lon: ${lon}, todayDate: ${todayDate}`)
+        const { data: cachedDaysFromToday, latestUpdateTime } = await getCachedWeatherDataFromToday(lat!, lon!, todayDate)
+        console.log(`[数据库查询] 查询完成 - 返回数据条数: ${cachedDaysFromToday.length}, 最新更新时间: ${latestUpdateTime?.toISOString() || 'N/A'}`)
+        
+        if (cachedDaysFromToday.length > 0 && latestUpdateTime) {
+          // 检查数据是否过期（超过30分钟）
+          // 确保使用相同的时间基准进行比较
+          const now = getChinaTime()
+          const cachedTime = parseMySQLTimestamp(latestUpdateTime)
+          if (!cachedTime) {
+            console.warn(`[缓存检查] 无法解析更新时间，将使用API获取数据`)
+            needFetchFromAPI = true
+          } else {
+            const timeDiff = now.getTime() - cachedTime.getTime()
+            const thirtyMinutes = 30 * 60 * 1000 // 30分钟的毫秒数
+            const minutesDiff = Math.floor(timeDiff / (60 * 1000))
+            
+            console.log(`[缓存检查] 数据时间差: ${minutesDiff}分钟, 过期阈值: 30分钟, 是否过期: ${timeDiff > thirtyMinutes ? '是' : '否'}, 缓存时间: ${formatChinaDateTime(cachedTime)}, 当前时间: ${formatChinaDateTime(now)}`)
+            
+            if (timeDiff <= thirtyMinutes) {
+              // 数据有效，使用缓存数据
+              const cachedTimeStr = formatChinaDateTime(cachedTime)
+              console.log(`[缓存命中] 使用数据库缓存数据 - 经纬度: (${lat}, ${lon}), 更新时间: ${cachedTimeStr} (${cachedTime.toISOString()}), 数据条数: ${cachedDaysFromToday.length}, 数据日期范围: ${cachedDaysFromToday[0]?.date} ~ ${cachedDaysFromToday[cachedDaysFromToday.length - 1]?.date}`)
+              futureDays = cachedDaysFromToday.map(day => {
+                // 标记数据来自缓存，确保updatedAt是Date对象
+                return {
+                  ...day,
+                  fromCache: true,
+                  updatedAt: day.updatedAt ? parseMySQLTimestamp(day.updatedAt) : undefined
+                } as WeatherDay
+              })
+              futureDays.forEach(day => {
+                dayMap.set(day.date, day)
+              })
+              needFetchFromAPI = false
+            } else {
+              // 数据过期，需要从API获取
+              console.log(`[缓存过期] 数据库缓存数据已过期（${minutesDiff}分钟 > 30分钟），将从API获取新数据 - 经纬度: (${lat}, ${lon})`)
+            }
+          }
+        } else {
+          // 数据库中没有今日及之后的数据，需要从API获取
+          console.log(`[缓存未命中] 数据库中没有今日及之后的数据（数据条数: ${cachedDaysFromToday.length}, 更新时间: ${latestUpdateTime?.toISOString() || 'N/A'}），将从API获取 - 经纬度: (${lat}, ${lon})`)
+        }
+      } catch (err: any) {
+        // 数据库查询失败（连接失败、超时等异常），回退到使用API获取数据
+        const errorType = err.code || err.name || 'Unknown'
+        const errorMessage = err.message || '未知错误'
+        console.error(`[数据库错误] 从数据库获取今日缓存数据失败 - 错误类型: ${errorType}, 错误信息: ${errorMessage}, 将回退到使用和风天气API获取数据`)
+        console.error(`[数据库错误] 错误堆栈:`, err.stack)
+        // 确保需要从API获取数据
+        needFetchFromAPI = true
+      }
+    }
+    
+    // 如果需要从API获取数据
+    if (needFetchFromAPI) {
+      console.log(`[API调用] 开始从和风天气API获取数据 - locationId: ${locationId || 'N/A'}, lat: ${lat || 'N/A'}, lon: ${lon || 'N/A'}`)
+      try {
+        futureDays = await getWeather7d({ locationId, lat, lon })
+        console.log(`[API调用] 成功获取数据 - 数据条数: ${futureDays.length}, 数据日期范围: ${futureDays[0]?.date} ~ ${futureDays[futureDays.length - 1]?.date}`)
+      } catch (apiErr: any) {
+        console.error(`[API错误] 和风天气API调用失败 - 错误信息: ${apiErr.message}`)
+        console.error(`[API错误] 错误堆栈:`, apiErr.stack)
+        throw apiErr
+      }
+      
+      // 标记数据来自API，并设置更新时间为当前时间（中国时区）
+      const now = getChinaTime()
+      futureDays.forEach(day => {
+        day.fromCache = false
+        day.updatedAt = now
+      })
+      console.log(`[API调用] 数据已标记更新时间: ${formatChinaDateTime(now)}`)
+      
+      // 如果启用了数据库缓存功能，异步保存天气数据到数据库（不阻塞主流程）
+      if (enableDatabaseCache && hasLatLon && config.mysqlHost) {
+        console.log(`[数据库保存] 开始异步保存天气数据到数据库 - 经纬度: (${lat}, ${lon}), 城市: ${city}, 数据条数: ${futureDays.length}`)
+        saveWeatherData(lat!, lon!, city, futureDays).then(() => {
+          console.log(`[数据库保存] 成功保存天气数据到数据库 - 经纬度: (${lat}, ${lon}), 数据条数: ${futureDays.length}`)
+        }).catch(err => {
+          console.error(`[数据库保存] 保存天气数据到数据库失败 - 错误信息: ${err.message}`)
+          console.error(`[数据库保存] 错误堆栈:`, err.stack)
         })
-        
-        const todayParts = dateFormatter.formatToParts(today)
-        const todayYear = todayParts.find(p => p.type === 'year')?.value || ''
-        const todayMonth = todayParts.find(p => p.type === 'month')?.value || ''
-        const todayDay = todayParts.find(p => p.type === 'day')?.value || ''
-        const todayDate = `${todayYear}-${todayMonth}-${todayDay}`
-        
+      }
+      
+      // 添加从API获取的未来预报数据
+      futureDays.forEach(day => {
+        dayMap.set(day.date, day)
+      })
+    }
+    
+    // 如果启用了数据库缓存功能，从数据库获取该经纬度的历史缓存数据（今天之前的数据）
+    if (enableDatabaseCache && hasLatLon && config.mysqlHost) {
+      try {
+        console.log(`[历史数据查询] 开始查询历史缓存数据 - lat: ${lat}, lon: ${lon}, 截止日期: ${todayDate}`)
         // 获取今天之前的所有历史数据（使用 < 而不是 <=，排除今天）
-        // 不设置startDate，获取所有历史数据
         const cachedDays = await getCachedWeatherData(lat!, lon!, undefined, todayDate)
         
-        console.log(`从数据库获取到 ${cachedDays.length} 条历史缓存数据（经纬度: ${lat}, ${lon}，截止日期: ${todayDate}）`)
+        console.log(`[历史数据查询] 查询完成 - 返回数据条数: ${cachedDays.length}, 经纬度: (${lat}, ${lon}), 截止日期: ${todayDate}`)
+        if (cachedDays.length > 0) {
+          console.log(`[历史数据查询] 数据日期范围: ${cachedDays[0]?.date} ~ ${cachedDays[cachedDays.length - 1]?.date}`)
+        }
         
-        // 使用数据库缓存的历史数据
+        // 使用数据库缓存的历史数据，标记为来自缓存，确保updatedAt是Date对象
+        let addedCount = 0
+        let skippedCount = 0
         cachedDays.forEach(day => {
           if (!dayMap.has(day.date)) {
-            dayMap.set(day.date, day)
+            const dayWithCache: WeatherDay = {
+              ...day,
+              fromCache: true,
+              updatedAt: day.updatedAt ? parseMySQLTimestamp(day.updatedAt) : undefined
+            }
+            dayMap.set(day.date, dayWithCache)
+            addedCount++
+          } else {
+            skippedCount++
           }
         })
+        console.log(`[历史数据合并] 合并完成 - 新增: ${addedCount}条, 跳过(已存在): ${skippedCount}条`)
       } catch (err: any) {
-        console.warn('从数据库获取缓存数据失败:', err.message)
+        // 历史数据获取失败不影响主流程，只记录警告（主数据已从API获取）
+        const errorType = err.code || err.name || 'Unknown'
+        const errorMessage = err.message || '未知错误'
+        console.error(`[历史数据错误] 从数据库获取历史缓存数据失败 - 错误类型: ${errorType}, 错误信息: ${errorMessage}, 将跳过历史数据`)
+        console.error(`[历史数据错误] 错误堆栈:`, err.stack)
+        // 历史数据获取失败不影响主流程，继续执行
       }
     }
     
@@ -244,11 +415,24 @@ export default defineEventHandler(async (event) => {
       a.date.localeCompare(b.date)
     )
     
+    // 统计数据来源
+    const cacheCount = sortedDays.filter(d => d.fromCache).length
+    const apiCount = sortedDays.filter(d => !d.fromCache).length
+    
+    console.log(`[数据汇总] 最终数据统计 - 总条数: ${sortedDays.length}, 来自缓存: ${cacheCount}条, 来自API: ${apiCount}条`)
+    if (sortedDays.length > 0) {
+      console.log(`[数据汇总] 数据日期范围: ${sortedDays[0]?.date} ~ ${sortedDays[sortedDays.length - 1]?.date}`)
+    }
+    
+    console.log(`[ICS生成] 开始生成ICS文件 - 城市: ${city}, 数据条数: ${sortedDays.length}`)
     const ics = generateICS(sortedDays, city)
+    console.log(`[ICS生成] ICS文件生成完成 - 文件大小: ${ics.length} 字符`)
     setHeader(event, 'Content-Type', 'text/calendar; charset=utf-8')
     return ics
   } catch (error: any) {
-    console.error('ICS生成错误:', error)
+    console.error(`[错误] ICS生成失败 - 错误信息: ${error.message}`)
+    console.error(`[错误] 错误堆栈:`, error.stack)
+    console.error(`[错误] 请求参数 - locationId: ${locationId || 'N/A'}, lat: ${lat || 'N/A'}, lon: ${lon || 'N/A'}, city: ${city || 'N/A'}`)
     throw createError({
       statusCode: 500,
       statusMessage: error.message || '天气数据获取失败'
