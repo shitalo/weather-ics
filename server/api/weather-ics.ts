@@ -380,9 +380,16 @@ export default defineEventHandler(async (event) => {
     // 如果启用了数据库缓存功能，从数据库获取该经纬度的历史缓存数据（今天之前的数据）
     if (enableDatabaseCache && hasLatLon && config.mysqlHost) {
       try {
-        console.log(`[历史数据查询] 开始查询历史缓存数据 - lat: ${lat}, lon: ${lon}, 截止日期: ${todayDate}`)
-        // 获取今天之前的所有历史数据（使用 < 而不是 <=，排除今天）
-        const cachedDays = await getCachedWeatherData(lat!, lon!, undefined, todayDate)
+        // 计算历史数据的起始日期（今天减去最大天数）
+        // 使用 today（已通过 getChinaTime() 获取，确保时区一致）
+        const maxHistoryDays = config.maxHistoryDays || 31
+        const startDateObj = new Date(today.getTime())
+        startDateObj.setDate(startDateObj.getDate() - maxHistoryDays)
+        const startDate = formatChinaDate(startDateObj)
+        
+        console.log(`[历史数据查询] 开始查询历史缓存数据 - lat: ${lat}, lon: ${lon}, 起始日期: ${startDate}, 截止日期: ${todayDate}, 最大天数: ${maxHistoryDays}`)
+        // 获取指定日期范围内的历史数据（使用 < 而不是 <=，排除今天）
+        const cachedDays = await getCachedWeatherData(lat!, lon!, startDate, todayDate)
         
         console.log(`[历史数据查询] 查询完成 - 返回数据条数: ${cachedDays.length}, 经纬度: (${lat}, ${lon}), 截止日期: ${todayDate}`)
         if (cachedDays.length > 0) {
