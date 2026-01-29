@@ -53,6 +53,7 @@
 | 变量名 | 是否必需 | 默认值 | 示例值 | 说明 |
 |--------|----------|--------|--------|------|
 | `HEFENG_API_KEY` | ✅ 必需 | 无 | `your_hefeng_api_key_here` | 和风天气 API Key，用于获取 7 天预报数据 |
+| `HEFENG_API_HOST` | ⭕ 可选 | 无 | `abc.def.qweatherapi.com` | 和风天气 API Host，用于替代公共API域名，提供更高的API安全等级。如果未配置，将使用旧的公共域名（`devapi.qweather.com` 和 `geoapi.qweather.com`）。**注意**：旧的公共域名将在2026年停止服务，建议尽快迁移到API Host。详情参考[和风天气公告](https://blog.qweather.com/announce/public-api-domain-change-to-api-host/) |
 | `GEO_API_PROVIDER` | ⭕ 可选 | `hefeng` | `hefeng` / `nominatim` | 地理编码提供商，支持和风 GeoAPI 或 OpenStreetMap Nominatim，值大小写不敏感（如 `NOMINATIM` 也可） |
 | `USE_SERVER_NOMINATIM` | ⭕ 可选 | `false` | `true` / `false` / `auto` | 是否通过服务端代理访问 Nominatim，值大小写不敏感：<br/>- `false`：默认值，直接通过浏览器访问 Nominatim<br/>- `true`：优先通过服务端代理（`/api/nominatim`），失败回退到浏览器直连<br/>- `auto`：自动检测网络，能访问境外网站则浏览器直连，否则使用服务端代理 |
 | `ENABLE_DATABASE_CACHE` | ⭕ 可选 | `false` | `true` / `false` | 是否启用数据库缓存功能，值大小写不敏感：<br/>- `false`：默认值，不启用数据库缓存功能<br/>- `true`：启用数据库缓存功能，自动保存和读取天气数据<br/>**注意**：需要同时配置 MySQL 相关环境变量才能生效 |
@@ -96,6 +97,7 @@ pnpm install
 
 ```bash
 HEFENG_API_KEY=your_hefeng_api_key_here
+HEFENG_API_HOST=abc.def.qweatherapi.com
 GEO_API_PROVIDER=hefeng
 USE_SERVER_NOMINATIM=false
 ENABLE_DATABASE_CACHE=false
@@ -111,6 +113,11 @@ MYSQL_PASSWORD=your_password
 MYSQL_DATABASE=weather_ics
 
 # 可选值说明：
+# HEFENG_API_HOST:
+#   - 可选：和风天气API Host，用于替代公共API域名
+#   - 如果未配置，将使用旧的公共域名（devapi.qweather.com 和 geoapi.qweather.com）
+#   - 旧的公共域名将在2026年停止服务，建议尽快迁移
+#   - 可在和风天气控制台查看你的API Host
 # USE_SERVER_NOMINATIM:
 #   - false: 直接通过浏览器访问 Nominatim（默认）
 #   - true: 优先通过服务端代理访问 Nominatim
@@ -201,10 +208,11 @@ pnpm preview
 
 ### 和风天气API
 
-- **天气预报**：`https://devapi.qweather.com/v7/weather/7d`
-- **地理编码**：`https://geoapi.qweather.com/v2/city/lookup`
+- **天气预报**：`https://devapi.qweather.com/v7/weather/7d`（或使用API Host）
+- **地理编码**：`https://geoapi.qweather.com/v2/city/lookup`（或使用API Host）
 - **认证方式**：API Key
 - **请求限制**：根据和风天气套餐限制
+- **API Host**：建议使用API Host替代公共API域名，提供更高的API安全等级。旧的公共域名将在2026年停止服务，详情参考[和风天气公告](https://blog.qweather.com/announce/public-api-domain-change-to-api-host/)
 
 ### Nominatim API (OpenStreetMap)
 
@@ -247,8 +255,10 @@ pnpm preview
 2. **导入项目**到Vercel，自动识别Nuxt
 3. **配置环境变量**：
    - `HEFENG_API_KEY`（必需）
+   - `HEFENG_API_HOST`（可选，建议配置，用于替代公共API域名）
    - `GEO_API_PROVIDER`（可选，默认：`hefeng`）
    - `USE_SERVER_NOMINATIM`（可选，默认：`false`，支持 `auto` 自动检测）
+   - `ENABLE_DATABASE_CACHE`（可选，默认：`false`，是否启用数据库缓存功能）
    - `MYSQL_HOST`、`MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_DATABASE`（可选，用于启用数据缓存功能）
    - `NITRO_PRESET=vercel`（可选，系统会自动检测）
 

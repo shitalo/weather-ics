@@ -74,8 +74,27 @@ const chosenItem = ref<any>(null)
 const validationError = ref('')
 const config = useRuntimeConfig()
 const hefengKey = config.public.hefengApiKey
+const hefengApiHost = config.public.hefengApiHost
 const geoApiProvider = config.public.geoApiProvider
 const useServerNominatim = config.public.useServerNominatim
+
+/**
+ * 获取和风天气GeoAPI的URL
+ * 如果配置了API Host，使用API Host并调整路径（v2 -> geo/v2）
+ * 否则使用旧的公共域名
+ */
+function getHefengGeoApiUrl(path: string): string {
+  if (hefengApiHost) {
+    // 使用API Host，路径需要从 v2 改为 geo/v2
+    const host = String(hefengApiHost).trim().replace(/\/$/, '')
+    const baseUrl = host.startsWith('http') ? host : `https://${host}`
+    // 将路径中的 /v2/ 替换为 /geo/v2/（根据和风天气API Host文档要求）
+    const adjustedPath = path.replace(/^\/v2\//, '/geo/v2/')
+    return `${baseUrl}${adjustedPath}`
+  }
+  // 向后兼容：使用旧的公共域名
+  return `https://geoapi.qweather.com${path}`
+}
 
 // 检测结果缓存（在内存中，页面刷新后重置）
 let networkCheckCache: boolean | null = null
@@ -279,7 +298,8 @@ async function onSearch() {
       const timeoutId = setTimeout(() => controller.abort(), 10000) // 10秒超时
       
       try {
-        const res = await fetch(`https://geoapi.qweather.com/v2/city/lookup?key=${hefengKey}&location=${encodeURIComponent(city.value)}`, {
+        const geoApiUrl = getHefengGeoApiUrl('/v2/city/lookup')
+        const res = await fetch(`${geoApiUrl}?key=${hefengKey}&location=${encodeURIComponent(city.value)}`, {
           signal: controller.signal
         })
         clearTimeout(timeoutId)

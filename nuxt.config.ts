@@ -60,6 +60,9 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     hefengApiKey: process.env.HEFENG_API_KEY,
+    // 和风天气API Host（可选），用于替代公共API域名
+    // 如果未配置，将使用旧的公共域名（devapi.qweather.com 和 geoapi.qweather.com）
+    hefengApiHost: process.env.HEFENG_API_HOST,
     geoApiProvider: normalizedGeoProvider,
     // 是否启用数据库缓存功能，默认 false（不启用）
     enableDatabaseCache: normalizedEnableDatabaseCache,
@@ -71,6 +74,8 @@ export default defineNuxtConfig({
     mysqlDatabase: process.env.MYSQL_DATABASE,
     public: {
       hefengApiKey: process.env.HEFENG_API_KEY,
+      // 和风天气API Host（可选），前端也需要使用
+      hefengApiHost: process.env.HEFENG_API_HOST,
       geoApiProvider: normalizedGeoProvider,
       // 是否通过服务端代理访问 Nominatim，默认 false（浏览器直连）
       // 可选值：'true'（服务端代理）、'false'（浏览器直连）、'auto'（自动检测）

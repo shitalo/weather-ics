@@ -1,15 +1,34 @@
 // 和风天气 API 适配器
 import type { WeatherDay } from './weatherTypes'
 
-const HEFENG_API_KEY = process.env.HEFENG_API_KEY || ''
-const BASE_URL = 'https://devapi.qweather.com/v7/weather/7d'
+/**
+ * 获取和风天气API基础URL
+ * 如果配置了API Host，使用API Host；否则使用旧的公共域名
+ */
+function getApiBaseUrl(): string {
+  const config = useRuntimeConfig()
+  const apiHost = config.hefengApiHost
+  
+  if (apiHost) {
+    // 使用API Host，确保URL格式正确（移除末尾的斜杠，添加协议）
+    const host = String(apiHost).trim().replace(/\/$/, '')
+    return host.startsWith('http') ? host : `https://${host}`
+  }
+  
+  // 向后兼容：使用旧的公共域名
+  return 'https://devapi.qweather.com'
+}
 
 export async function getWeather7d({ locationId, lat, lon }: { locationId?: string, lat?: string, lon?: string }): Promise<WeatherDay[]> {
+  const config = useRuntimeConfig()
+  const apiKey = config.hefengApiKey || ''
+  const baseUrl = getApiBaseUrl()
+  
   let url = ''
   if (locationId) {
-    url = `${BASE_URL}?location=${locationId}&key=${HEFENG_API_KEY}&lang=zh-hans`
+    url = `${baseUrl}/v7/weather/7d?location=${locationId}&key=${apiKey}&lang=zh-hans`
   } else if (lat && lon) {
-    url = `${BASE_URL}?location=${lon},${lat}&key=${HEFENG_API_KEY}&lang=zh-hans`
+    url = `${baseUrl}/v7/weather/7d?location=${lon},${lat}&key=${apiKey}&lang=zh-hans`
   } else {
     throw new Error('Missing locationId or lat/lon')
   }
