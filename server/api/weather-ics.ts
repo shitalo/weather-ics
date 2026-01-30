@@ -284,7 +284,7 @@ export default defineEventHandler(async (event) => {
         console.log(`[数据库查询] 查询完成 - 返回数据条数: ${cachedDaysFromToday.length}, 更新时间: ${latestUpdateTime?.toISOString() || 'N/A'} (优先使用今天天气的更新时间)`)
         
         if (cachedDaysFromToday.length > 0 && latestUpdateTime) {
-          // 检查数据是否过期（超过30分钟）
+          // 检查数据是否过期
           // 确保使用相同的时间基准进行比较
           const now = getChinaTime()
           const cachedTime = parseMySQLTimestamp(latestUpdateTime)
@@ -292,13 +292,15 @@ export default defineEventHandler(async (event) => {
             console.warn(`[缓存检查] 无法解析更新时间，将使用API获取数据`)
             needFetchFromAPI = true
           } else {
+            // 从配置中获取缓存过期时间（分钟），默认30分钟
+            const cacheExpireMinutes = config.cacheExpireMinutes ?? 30
             const timeDiff = now.getTime() - cachedTime.getTime()
-            const thirtyMinutes = 30 * 60 * 1000 // 30分钟的毫秒数
+            const expireTimeMs = cacheExpireMinutes * 60 * 1000 // 转换为毫秒数
             const minutesDiff = Math.floor(timeDiff / (60 * 1000))
             
-            console.log(`[缓存检查] 数据时间差: ${minutesDiff}分钟, 过期阈值: 30分钟, 是否过期: ${timeDiff > thirtyMinutes ? '是' : '否'}, 缓存时间: ${formatChinaDateTime(cachedTime)}, 当前时间: ${formatChinaDateTime(now)}`)
+            console.log(`[缓存检查] 数据时间差: ${minutesDiff}分钟, 过期阈值: ${cacheExpireMinutes}分钟, 是否过期: ${timeDiff > expireTimeMs ? '是' : '否'}, 缓存时间: ${formatChinaDateTime(cachedTime)}, 当前时间: ${formatChinaDateTime(now)}`)
             
-            if (timeDiff <= thirtyMinutes) {
+            if (timeDiff <= expireTimeMs) {
               // 数据有效，使用缓存数据
               const cachedTimeStr = formatChinaDateTime(cachedTime)
               // 统一日期格式显示
@@ -321,7 +323,7 @@ export default defineEventHandler(async (event) => {
               needFetchFromAPI = false
             } else {
               // 数据过期，需要从API获取
-              console.log(`[缓存过期] 数据库缓存数据已过期（${minutesDiff}分钟 > 30分钟），将从API获取新数据 - 经纬度: (${lat}, ${lon})`)
+              console.log(`[缓存过期] 数据库缓存数据已过期（${minutesDiff}分钟 > ${cacheExpireMinutes}分钟），将从API获取新数据 - 经纬度: (${lat}, ${lon})`)
             }
           }
         } else {

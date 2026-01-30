@@ -74,6 +74,8 @@ export default defineNuxtConfig({
     mysqlDatabase: process.env.MYSQL_DATABASE,
     // 历史天气数据最大天数，默认31天
     maxHistoryDays: process.env.MAX_HISTORY_DAYS ? parseInt(process.env.MAX_HISTORY_DAYS) : 31,
+    // 缓存过期时间（分钟），默认30分钟
+    cacheExpireMinutes: process.env.CACHE_EXPIRE_MINUTES ? parseInt(process.env.CACHE_EXPIRE_MINUTES) : 30,
     public: {
       hefengApiKey: process.env.HEFENG_API_KEY,
       // 和风天气API Host（可选），前端也需要使用
