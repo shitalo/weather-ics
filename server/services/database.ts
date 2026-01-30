@@ -5,6 +5,25 @@ let pool: mysql.Pool | null = null
 
 // 时区常量：统一使用中国时区
 const DB_TIMEZONE = '+08:00' // 中国时区 UTC+8
+const TIMEZONE = 'Asia/Shanghai' // 中国时区
+
+/**
+ * 将Date对象格式化为中国时区的日期字符串 (YYYYMMDD)
+ * 用于处理MySQL返回的Date对象，确保时区正确
+ */
+function formatDateInChinaTimezone(date: Date): string {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  })
+  const parts = formatter.formatToParts(date)
+  const year = parts.find(p => p.type === 'year')?.value || ''
+  const month = parts.find(p => p.type === 'month')?.value || ''
+  const day = parts.find(p => p.type === 'day')?.value || ''
+  return `${year}${month}${day}`
+}
 
 // 初始化数据库连接池
 export function initDatabase(config?: any) {
@@ -263,12 +282,9 @@ export async function getCachedWeatherData(
       // 处理日期格式：MySQL的DATE类型可能返回Date对象或字符串
       let dateStr = ''
       if (row.date instanceof Date) {
-        // 使用本地时间格式化，避免时区转换问题
-        // 不使用 toISOString()，因为它会转换为 UTC 时间
-        const year = row.date.getFullYear()
-        const month = String(row.date.getMonth() + 1).padStart(2, '0')
-        const day = String(row.date.getDate()).padStart(2, '0')
-        dateStr = `${year}${month}${day}`
+        // 使用中国时区格式化Date对象，避免时区转换问题
+        // 不使用 getFullYear/getMonth/getDate，因为它们会使用Date对象的本地时区
+        dateStr = formatDateInChinaTimezone(row.date)
       } else if (typeof row.date === 'string') {
         // 如果已经是字符串，可能是 'YYYY-MM-DD' 格式
         dateStr = row.date.replace(/-/g, '')
@@ -379,10 +395,9 @@ export async function getCachedWeatherDataFromToday(
       // 处理日期格式：MySQL的DATE类型可能返回Date对象或字符串
       let dateStr = ''
       if (row.date instanceof Date) {
-        const year = row.date.getFullYear()
-        const month = String(row.date.getMonth() + 1).padStart(2, '0')
-        const day = String(row.date.getDate()).padStart(2, '0')
-        dateStr = `${year}${month}${day}`
+        // 使用中国时区格式化Date对象，避免时区转换问题
+        // 不使用 getFullYear/getMonth/getDate，因为它们会使用Date对象的本地时区
+        dateStr = formatDateInChinaTimezone(row.date)
       } else if (typeof row.date === 'string') {
         dateStr = row.date.replace(/-/g, '')
       } else {

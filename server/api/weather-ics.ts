@@ -306,14 +306,16 @@ export default defineEventHandler(async (event) => {
               const maxDate = cachedDaysFromToday[cachedDaysFromToday.length - 1]?.date.replace(/-/g, '') || ''
               console.log(`[缓存命中] 使用数据库缓存数据 - 经纬度: (${lat}, ${lon}), 更新时间: ${cachedTimeStr} (${cachedTime.toISOString()}), 数据条数: ${cachedDaysFromToday.length}, 数据日期范围: ${minDate} ~ ${maxDate}`)
               futureDays = cachedDaysFromToday.map(day => {
-                // 标记数据来自缓存，确保updatedAt是Date对象
+                // 标记数据来自缓存，确保updatedAt是Date对象，统一日期格式为 YYYYMMDD
                 return {
                   ...day,
+                  date: day.date.replace(/-/g, ''), // 统一日期格式
                   fromCache: true,
                   updatedAt: day.updatedAt ? parseMySQLTimestamp(day.updatedAt) : undefined
                 } as WeatherDay
               })
               futureDays.forEach(day => {
+                // 使用统一的日期格式（YYYYMMDD）作为key
                 dayMap.set(day.date, day)
               })
               needFetchFromAPI = false
@@ -357,12 +359,16 @@ export default defineEventHandler(async (event) => {
       futureDays.forEach(day => {
         day.fromCache = false
         day.updatedAt = now
+        // 统一日期格式为 YYYYMMDD（移除连字符）
+        day.date = day.date.replace(/-/g, '')
       })
       console.log(`[API调用] 数据已标记更新时间: ${formatChinaDateTime(now)}`)
       
       // 如果启用了数据库缓存功能，异步保存天气数据到数据库（不阻塞主流程）
       if (enableDatabaseCache && hasLatLon && config.mysqlHost) {
         console.log(`[数据库保存] 开始异步保存天气数据到数据库 - 经纬度: (${lat}, ${lon}), 城市: ${city}, 数据条数: ${futureDays.length}`)
+        // 注意：保存到数据库时需要将日期格式转换回 YYYY-MM-DD，但这里先保存原始格式
+        // saveWeatherData 函数内部会处理日期格式转换
         saveWeatherData(lat!, lon!, city, futureDays).then(() => {
           console.log(`[数据库保存] 成功保存天气数据到数据库 - 经纬度: (${lat}, ${lon}), 数据条数: ${futureDays.length}`)
         }).catch(err => {
@@ -373,6 +379,7 @@ export default defineEventHandler(async (event) => {
       
       // 添加从API获取的未来预报数据
       futureDays.forEach(day => {
+        // 使用统一的日期格式（YYYYMMDD）作为key
         dayMap.set(day.date, day)
       })
     }
@@ -406,25 +413,50 @@ export default defineEventHandler(async (event) => {
             const minDate = sortedDates[0]
             const maxDate = sortedDates[sortedDates.length - 1]
             console.log(`[历史数据查询] 数据日期范围: ${minDate} ~ ${maxDate} (共${dates.length}条)`)
+            // 显示所有查询到的日期，便于诊断
+            console.log(`[历史数据查询] 查询到的所有日期: ${sortedDates.join(', ')}`)
           }
+        } else {
+          // 如果没有查询到历史数据，记录警告
+          console.log(`[历史数据查询] 未查询到历史数据 - 查询条件: startDate=${startDate}, endDate=${todayDate}`)
         }
         
         // 使用数据库缓存的历史数据，标记为来自缓存，确保updatedAt是Date对象
         let addedCount = 0
         let skippedCount = 0
+        // 计算昨天的日期，用于检查是否包含昨天的数据
+        const yesterdayObj = new Date(today.getTime())
+        yesterdayObj.setDate(yesterdayObj.getDate() - 1)
+        const yesterdayDate = formatChinaDate(yesterdayObj)
+        const yesterdayDateStr = yesterdayDate.replace(/-/g, '')
+        let hasYesterday = false
+        
         cachedDays.forEach(day => {
-          if (!dayMap.has(day.date)) {
+          // 统一日期格式进行比较
+          const dayDateStr = day.date.replace(/-/g, '')
+          if (dayDateStr === yesterdayDateStr) {
+            hasYesterday = true
+          }
+          
+          // 使用统一的日期格式作为key
+          if (!dayMap.has(dayDateStr)) {
             const dayWithCache: WeatherDay = {
               ...day,
+              date: dayDateStr, // 确保日期格式统一为 YYYYMMDD
               fromCache: true,
               updatedAt: day.updatedAt ? parseMySQLTimestamp(day.updatedAt) : undefined
             }
-            dayMap.set(day.date, dayWithCache)
+            dayMap.set(dayDateStr, dayWithCache)
             addedCount++
           } else {
             skippedCount++
           }
         })
+        
+        if (!hasYesterday && cachedDays.length > 0) {
+          console.log(`[历史数据合并] 警告: 查询到的历史数据中不包含昨天的数据 (${yesterdayDateStr})，可能数据库中确实没有昨天的数据`)
+        }
+        
         console.log(`[历史数据合并] 合并完成 - 新增: ${addedCount}条, 跳过(已存在): ${skippedCount}条`)
       } catch (err: any) {
         // 历史数据获取失败不影响主流程，只记录警告（主数据已从API获取）
