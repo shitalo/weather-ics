@@ -281,7 +281,7 @@ export default defineEventHandler(async (event) => {
       try {
         console.log(`[数据库查询] 开始查询今日及之后的数据 - lat: ${lat}, lon: ${lon}, todayDate: ${todayDate}`)
         const { data: cachedDaysFromToday, latestUpdateTime } = await getCachedWeatherDataFromToday(lat!, lon!, todayDate)
-        console.log(`[数据库查询] 查询完成 - 返回数据条数: ${cachedDaysFromToday.length}, 最新更新时间: ${latestUpdateTime?.toISOString() || 'N/A'}`)
+        console.log(`[数据库查询] 查询完成 - 返回数据条数: ${cachedDaysFromToday.length}, 更新时间: ${latestUpdateTime?.toISOString() || 'N/A'} (优先使用今天天气的更新时间)`)
         
         if (cachedDaysFromToday.length > 0 && latestUpdateTime) {
           // 检查数据是否过期（超过30分钟）

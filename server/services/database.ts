@@ -389,7 +389,10 @@ export async function getCachedWeatherDataFromToday(
     const [rows] = await pool.execute(sql, params) as any[]
     console.log(`[数据库查询] SQL查询完成 - 返回行数: ${Array.isArray(rows) ? rows.length : 0}`)
 
-    let latestUpdateTime: Date | null = null as Date | null
+    // 统一todayDate格式为 YYYYMMDD，用于比较
+    const todayDateStr = todayDate.replace(/-/g, '')
+    let todayUpdateTime: Date | null = null as Date | null // 今天天气的更新时间（优先使用）
+    let latestUpdateTime: Date | null = null as Date | null // 所有数据中的最新更新时间（作为fallback）
 
     const result = rows.map((row: any) => {
       // 处理日期格式：MySQL的DATE类型可能返回Date对象或字符串
@@ -415,8 +418,16 @@ export async function getCachedWeatherDataFromToday(
         updatedAt = row.updated_at instanceof Date 
           ? row.updated_at 
           : new Date(row.updated_at)
-        if (updatedAt instanceof Date && (!latestUpdateTime || updatedAt > latestUpdateTime)) {
-          latestUpdateTime = updatedAt
+        
+        if (updatedAt instanceof Date) {
+          // 优先使用今天天气的更新时间
+          if (dateStr === todayDateStr && (!todayUpdateTime || updatedAt > todayUpdateTime)) {
+            todayUpdateTime = updatedAt
+          }
+          // 同时记录所有数据中的最新更新时间（作为fallback）
+          if (!latestUpdateTime || updatedAt > latestUpdateTime) {
+            latestUpdateTime = updatedAt
+          }
         }
       }
       
@@ -432,11 +443,14 @@ export async function getCachedWeatherDataFromToday(
       }
     })
     
-    const latestUpdateTimeStr: string = latestUpdateTime !== null 
-      ? latestUpdateTime.toISOString() 
+    // 优先使用今天天气的更新时间，如果今天没有数据，则使用所有数据中的最新更新时间
+    const finalUpdateTime: Date | null = todayUpdateTime ? todayUpdateTime : (latestUpdateTime ? latestUpdateTime : null)
+    const finalUpdateTimeStr: string = finalUpdateTime !== null 
+      ? finalUpdateTime.toISOString() 
       : 'N/A'
-    console.log(`[数据库查询] 数据处理完成 - 结果条数: ${result.length}, 最新更新时间: ${latestUpdateTimeStr}`)
-    return { data: result, latestUpdateTime }
+    const updateTimeSource = todayUpdateTime ? '今天天气' : (latestUpdateTime ? '所有数据' : '无')
+    console.log(`[数据库查询] 数据处理完成 - 结果条数: ${result.length}, 更新时间: ${finalUpdateTimeStr} (来源: ${updateTimeSource})`)
+    return { data: result, latestUpdateTime: finalUpdateTime }
   } catch (error: any) {
     // 数据库连接失败、超时等真正的错误应该抛出异常，让上层代码能够回退到API
     // 而不是静默返回空数据
