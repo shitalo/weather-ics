@@ -131,6 +131,7 @@ export async function saveWeatherData(
     code?: string
     sunrise?: string
     sunset?: string
+    updatedAt?: Date
   }>
 ): Promise<void> {
   const pool = getPool()
@@ -162,13 +163,41 @@ export async function saveWeatherData(
           ? `${day.date.substring(0, 4)}-${day.date.substring(4, 6)}-${day.date.substring(6, 8)}`
           : day.date
 
-        // 使用NOW()函数获取当前时间，MySQL会根据服务器时区处理
-        // 为了确保时区一致性，我们也可以显式设置会话时区，但为了兼容性，这里使用CURRENT_TIMESTAMP
-        // MySQL的TIMESTAMP会根据服务器时区自动转换，我们需要确保服务器时区设置正确
+        // 使用应用传入的更新时间，而不是数据库的 CURRENT_TIMESTAMP
+        // 如果没有提供 updatedAt，则使用当前时间（中国时区）
+        let updateTime: Date
+        if (day.updatedAt) {
+          updateTime = day.updatedAt
+        } else {
+          // 如果没有提供更新时间，使用当前时间
+          updateTime = new Date()
+        }
+
+        // 将Date对象格式化为MySQL TIMESTAMP格式：YYYY-MM-DD HH:mm:ss
+        // 使用中国时区格式化，确保时间正确
+        const formatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: TIMEZONE,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        })
+        const parts = formatter.formatToParts(updateTime)
+        const year = parts.find(p => p.type === 'year')?.value || ''
+        const month = parts.find(p => p.type === 'month')?.value || ''
+        const dayNum = parts.find(p => p.type === 'day')?.value || ''
+        const hours = parts.find(p => p.type === 'hour')?.value || ''
+        const minutes = parts.find(p => p.type === 'minute')?.value || ''
+        const seconds = parts.find(p => p.type === 'second')?.value || ''
+        const updateTimeStr = `${year}-${month}-${dayNum} ${hours}:${minutes}:${seconds}`
+
         const insertSQL = `
           INSERT INTO weather_cache 
-            (lat, lon, city, date, text, temp_min, temp_max, wind, sunrise, sunset)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (lat, lon, city, date, text, temp_min, temp_max, wind, sunrise, sunset, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
             city = VALUES(city),
             text = VALUES(text),
@@ -177,7 +206,7 @@ export async function saveWeatherData(
             wind = VALUES(wind),
             sunrise = VALUES(sunrise),
             sunset = VALUES(sunset),
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = VALUES(updated_at)
         `
 
         await connection.execute(insertSQL, [
@@ -190,7 +219,8 @@ export async function saveWeatherData(
           day.tempMax || '',
           day.wind || '',
           day.sunrise || '',
-          day.sunset || ''
+          day.sunset || '',
+          updateTimeStr
         ])
       }
 
