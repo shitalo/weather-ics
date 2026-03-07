@@ -47,6 +47,12 @@ const normalizedEnableDatabaseCache = ['true', 'false'].includes(rawEnableDataba
   ? rawEnableDatabaseCache === 'true'
   : false
 
+// 是否启用未传经纬度时的 IP 定位兜底，默认 false（不启用）
+const rawEnableIpLocationFallback = (process.env.ENABLE_IP_LOCATION_FALLBACK || 'false').toString().toLowerCase()
+const normalizedEnableIpLocationFallback = ['true', 'false'].includes(rawEnableIpLocationFallback)
+  ? rawEnableIpLocationFallback === 'true'
+  : false
+
 export default defineNuxtConfig({
   compatibilityDate: '2025-05-15',
   devtools: { enabled: true },
@@ -66,6 +72,8 @@ export default defineNuxtConfig({
     geoApiProvider: normalizedGeoProvider,
     // 是否启用数据库缓存功能，默认 false（不启用）
     enableDatabaseCache: normalizedEnableDatabaseCache,
+    // 是否启用未传经纬度时的 IP 定位兜底，默认 false（不启用）
+    enableIpLocationFallback: normalizedEnableIpLocationFallback,
     // MySQL数据库配置
     mysqlHost: process.env.MYSQL_HOST,
     mysqlPort: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT) : 3306,

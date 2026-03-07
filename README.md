@@ -7,7 +7,7 @@
 - **城市搜索**：支持中文城市名搜索，自动匹配地理位置
 - **天气订阅**：生成7天天气预报的日历订阅链接
 - **多API支持**：支持和风天气API和Nominatim地理编码API
-- **IP定位**：自动获取用户位置作为默认选项
+- **IP定位**：支持通过环境变量开启 IP 定位兜底
 - **现代化UI**：响应式设计，支持移动端和桌面端
 - **一键复制**：快速复制订阅链接到剪贴板
 - **多平台部署**：支持Vercel、Cloudflare等平台部署
@@ -58,6 +58,7 @@
 > - `GEO_API_PROVIDER` 会被统一转为小写后再判断  
 > - `USE_SERVER_NOMINATIM` 会把值转为小写字符串后再对比（支持 `true` / `false` / `auto`）  
 > - `ENABLE_DATABASE_CACHE` 会把值转为小写字符串后再对比（支持 `true` / `false`）  
+> - `ENABLE_IP_LOCATION_FALLBACK` 会把值转为小写字符串后再对比（支持 `true` / `false`）  
 > - MySQL 相关环境变量（`MYSQL_HOST`、`MYSQL_USER` 等）直接使用原始值
 
 ### 环境变量一览
@@ -69,6 +70,7 @@
 | `GEO_API_PROVIDER` | ⭕ 可选 | `hefeng` | `hefeng` / `nominatim` | 地理编码提供商，支持和风 GeoAPI 或 OpenStreetMap Nominatim，值大小写不敏感（如 `NOMINATIM` 也可） |
 | `USE_SERVER_NOMINATIM` | ⭕ 可选 | `false` | `true` / `false` / `auto` | 是否通过服务端代理访问 Nominatim，值大小写不敏感：<br/>- `false`：默认值，直接通过浏览器访问 Nominatim<br/>- `true`：优先通过服务端代理（`/api/nominatim`），失败回退到浏览器直连<br/>- `auto`：自动检测网络，能访问境外网站则浏览器直连，否则使用服务端代理 |
 | `ENABLE_DATABASE_CACHE` | ⭕ 可选 | `false` | `true` / `false` | 是否启用数据库缓存功能，值大小写不敏感：<br/>- `false`：默认值，不启用数据库缓存功能<br/>- `true`：启用数据库缓存功能，自动保存和读取天气数据<br/>**注意**：需要同时配置 MySQL 相关环境变量才能生效 |
+| `ENABLE_IP_LOCATION_FALLBACK` | ⭕ 可选 | `false` | `true` / `false` | 是否在未传 `locationId` 和 `lat`/`lon` 时启用 IP 定位兜底，值大小写不敏感：<br/>- `false`：默认值，不自动通过 IP 推断位置<br/>- `true`：自动通过 IP 获取经纬度和城市信息 |
 | `MYSQL_HOST` | ⭕ 可选 | 无 | `localhost` / `192.168.1.100` | MySQL 数据库主机地址 |
 | `MYSQL_PORT` | ⭕ 可选 | `3306` | `3306` | MySQL 数据库端口 |
 | `MYSQL_USER` | ⭕ 可选 | 无 | `root` | MySQL 数据库用户名 |
@@ -115,6 +117,7 @@ HEFENG_API_HOST=abc.def.qweatherapi.com
 GEO_API_PROVIDER=hefeng
 USE_SERVER_NOMINATIM=false
 ENABLE_DATABASE_CACHE=false
+ENABLE_IP_LOCATION_FALLBACK=false
 
 # MySQL数据库配置（可选，用于缓存天气数据）
 # 需要同时设置 ENABLE_DATABASE_CACHE=true 才能启用数据库缓存功能
@@ -149,6 +152,9 @@ CACHE_EXPIRE_MINUTES=90
 # ENABLE_DATABASE_CACHE:
 #   - false: 不启用数据库缓存功能（默认）
 #   - true: 启用数据库缓存功能，需要同时配置 MySQL 相关环境变量
+# ENABLE_IP_LOCATION_FALLBACK:
+#   - false: 不启用 IP 定位兜底（默认）
+#   - true: 当未传 locationId 和 lat/lon 时，自动通过 IP 获取经纬度和城市信息
 # MAX_HISTORY_DAYS:
 #   - 默认值: 31天
 #   - 说明: 控制从数据库查询历史天气数据的最大天数范围

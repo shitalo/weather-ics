@@ -191,13 +191,15 @@ function generateICS(days: WeatherDay[], city: string) {
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
+  const config = useRuntimeConfig()
+  const enableIpLocationFallback = config.enableIpLocationFallback ?? false
   let locationId = query.locationId as string | undefined
   let lat = query.lat as string | undefined
   let lon = query.lon as string | undefined
   let city = (query.city as string) || ''
 
-  // 如果没有参数，自动通过IP获取经纬度和城市信息
-  if (!locationId && (!lat || !lon)) {
+  // 如果启用了 IP 定位兜底且没有传入位置参数，则自动通过 IP 获取经纬度和城市信息
+  if (enableIpLocationFallback && !locationId && (!lat || !lon)) {
     // 获取客户端IP
     let xff = event.node.req.headers['x-forwarded-for']
     let ip = Array.isArray(xff) ? xff[0] : (xff ? xff.split(',')[0] : '')
@@ -256,7 +258,6 @@ export default defineEventHandler(async (event) => {
   }
   
   try {
-    const config = useRuntimeConfig()
     const enableDatabaseCache = config.enableDatabaseCache ?? false
     
     console.log(`[天气ICS] 请求开始 - locationId: ${locationId || 'N/A'}, lat: ${lat || 'N/A'}, lon: ${lon || 'N/A'}, city: ${city || 'N/A'}`)
@@ -268,7 +269,7 @@ export default defineEventHandler(async (event) => {
     const today = getChinaTime()
     const todayDate = formatChinaDate(today)
     
-    console.log(`[天气ICS] 今日日期: ${todayDate}, 数据库缓存: ${enableDatabaseCache ? '启用' : '禁用'}, 有经纬度: ${hasLatLon}`)
+    console.log(`[天气ICS] 今日日期: ${todayDate}, 数据库缓存: ${enableDatabaseCache ? '启用' : '禁用'}, IP定位兜底: ${enableIpLocationFallback ? '启用' : '禁用'}, 有经纬度: ${hasLatLon}`)
     
     // 使用Map来合并数据，确保每个日期只有一条记录
     const dayMap = new Map<string, WeatherDay>()
