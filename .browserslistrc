@@ -1,0 +1,4 @@
+defaults
+safari >= 13
+ios_saf >= 13
+not op_mini all
