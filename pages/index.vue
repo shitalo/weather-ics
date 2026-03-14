@@ -662,16 +662,22 @@ h1 {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
   gap: 1.4rem;
   align-items: start;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .panel-search {
   display: grid;
   gap: 1rem;
+  min-width: 0;
 }
 
 .panel-results {
   display: grid;
   gap: 1rem;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .panel-notes {
@@ -839,6 +845,8 @@ button:disabled {
   border: 1px solid var(--line);
   background: rgba(250, 248, 243, 0.85);
   background: oklch(97% 0.02 80 / 0.6);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .candidates-head {
@@ -852,6 +860,7 @@ button:disabled {
   align-items: center;
   padding-bottom: 0.8rem;
   border-bottom: 1px dashed var(--line);
+  min-width: 0;
 }
 
 .candidate:last-child {
@@ -862,12 +871,16 @@ button:disabled {
 .candidate-main {
   display: grid;
   gap: 0.2rem;
+  min-width: 0;
 }
 
 .candidate-name {
   font-weight: 600;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .candidate-meta {
@@ -876,6 +889,7 @@ button:disabled {
   flex-wrap: wrap;
   color: var(--muted);
   font-size: 0.9rem;
+  min-width: 0;
 }
 
 .result {
@@ -887,6 +901,8 @@ button:disabled {
   background: linear-gradient(135deg, oklch(96% 0.03 210), oklch(98% 0.01 80));
   display: grid;
   gap: 0.8rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .result-head {
@@ -1032,6 +1048,51 @@ button:disabled {
     right: 0;
     top: 0;
     margin-top: 1rem;
+  }
+
+  .panel-head {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+
+  .panel-badges {
+    justify-content: flex-start;
+  }
+
+  .panel-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 980px) {
+    .panel-body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-search {
+      order: 1;
+    }
+
+    .panel-results {
+      order: 2;
+    }
+  }
+
+  @media (max-width: 1180px) and (orientation: landscape) {
+    .panel-body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-search {
+      order: 1;
+    }
+
+    .panel-results {
+      order: 2;
+    }
   }
 }
 
