@@ -5,7 +5,7 @@
       <h1>天气日历订阅</h1>
       <p class="lead">
         把城市天气变成可订阅的日历事件，自动同步到系统日历、日程软件或团队日历。
-        适合出差规划、行程提醒和日常天气关注。
+        支持输入城市、街道、景点等名称，适合出差规划、行程提醒和日常天气关注。
       </p>
       <div class="atlas-grid">
         <div class="atlas-card">
@@ -32,7 +32,7 @@
       <div class="panel-head">
         <div>
           <div class="panel-title">生成订阅链接</div>
-          <div class="panel-subtitle">输入城市名称，系统会返回可选的地理位置。</div>
+        <div class="panel-subtitle">支持输入城市、街道、景点等名称，系统会返回可选的地理位置。</div>
         </div>
         <div class="panel-badges">
           <span class="badge">iCal / ICS</span>
@@ -49,7 +49,7 @@
               <div class="control" :class="{ invalid: validationError }">
                 <input
                   v-model="city"
-                  placeholder="例如：北京 / 上海 / San Francisco"
+              placeholder="例如：北京 / 上海 / 鸡鸣寺"
                   required
                   @blur="validateInput"
                   @keydown.enter.prevent="onSearch"
@@ -123,7 +123,19 @@
         <div v-if="showNameTip" class="toast">{{ fullNameTip }}</div>
       </transition>
       <transition name="fade">
-        <div v-if="showIcsTip" class="toast">已复制：{{ icsUrl }}</div>
+        <div
+          v-if="showIcsTip"
+          class="toast toast-url"
+          :class="{ expanded: showFullIcsTip }"
+          :title="icsUrl"
+          role="button"
+          tabindex="0"
+          @click="showFullIcsTip = !showFullIcsTip"
+          @keydown.enter.prevent="showFullIcsTip = !showFullIcsTip"
+          @keydown.space.prevent="showFullIcsTip = !showFullIcsTip"
+        >
+          已复制：{{ showFullIcsTip ? icsUrl : ellipsisIcsUrl }}
+        </div>
       </transition>
     </main>
   </div>
@@ -146,6 +158,7 @@ let tipTimer: ReturnType<typeof setTimeout> | null = null
 
 const showIcsTip = ref(false)
 let icsTipTimer: ReturnType<typeof setTimeout> | null = null
+const showFullIcsTip = ref(false)
 
 const config = useRuntimeConfig()
 const hefengKey = config.public.hefengApiKey
@@ -408,6 +421,7 @@ function copyLink() {
     document.body.removeChild(textarea)
   }
   showIcsTip.value = true
+  showFullIcsTip.value = false
   if (icsTipTimer) clearTimeout(icsTipTimer)
   icsTipTimer = setTimeout(() => {
     showIcsTip.value = false
@@ -959,6 +973,17 @@ button:disabled {
   max-width: min(640px, 90vw);
   text-align: center;
   pointer-events: none;
+}
+
+.toast-url {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.toast-url.expanded {
+  text-align: left;
 }
 
 .fade-enter-active,
