@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page">
     <section class="atlas" aria-hidden="false">
       <div class="eyebrow">Weather ICS Atlas</div>
@@ -161,20 +161,8 @@ let icsTipTimer: ReturnType<typeof setTimeout> | null = null
 const showFullIcsTip = ref(false)
 
 const config = useRuntimeConfig()
-const hefengKey = config.public.hefengApiKey
-const hefengApiHost = config.public.hefengApiHost
 const geoApiProvider = config.public.geoApiProvider
 const useServerNominatim = config.public.useServerNominatim
-
-function getHefengGeoApiUrl(path: string): string {
-  if (hefengApiHost) {
-    const host = String(hefengApiHost).trim().replace(/\/$/, '')
-    const baseUrl = host.startsWith('http') ? host : `https://${host}`
-    const adjustedPath = path.replace(/^\/v2\//, '/geo/v2/')
-    return `${baseUrl}${adjustedPath}`
-  }
-  return `https://geoapi.qweather.com${path}`
-}
 
 let networkCheckCache: boolean | null = null
 let networkCheckPromise: Promise<boolean> | null = null
@@ -182,6 +170,11 @@ let networkCheckPromise: Promise<boolean> | null = null
 onMounted(() => {
   if (window.history && window.history.replaceState && window.location.search) {
     window.history.replaceState(null, '', window.location.pathname)
+  }
+
+  if (geoApiProvider === 'nominatim' && String(useServerNominatim).toLowerCase() === 'auto') {
+    // Pre-warm the connectivity check after the page loads so search can reuse the cached result.
+    void checkOverseasNetworkAccess()
   }
 })
 
@@ -220,16 +213,77 @@ function mapNominatimCandidates(data: any) {
   }))
 }
 
+function getApiErrorMessage(payload: any) {
+  return payload?.error?.message || payload?.message || '查询失败'
+}
+
+function normalizeErrorMessage(err: any) {
+  const message = String(err?.message || '')
+  if (!message) return '查询失败'
+  if (message.includes('HEFENG_API_KEY')) {
+    return '服务端未配置 HEFENG_API_KEY，请在部署平台添加环境变量并重新部署'
+  }
+  if (message.includes('认证失败') || message.includes('UNAUTHORIZED')) {
+    return '和风天气认证失败，请检查部署环境中的 HEFENG_API_KEY'
+  }
+  if (message.includes('未找到该地点') || message.includes('NO SUCH LOCATION')) {
+    return '未找到该地点，请尝试更完整的城市或地区名称'
+  }
+  if (message.includes('请求参数错误') || message.includes('INVALID PARAMETER')) {
+    return message
+  }
+  if (message.includes('缺少必要参数') || message.includes('MISSING PARAMETER')) {
+    return message
+  }
+  if (message.includes('请求过于频繁') || message.includes('TOO MANY REQUESTS')) {
+    return '请求过于频繁，请稍后重试'
+  }
+  if (message.includes('本月和风天气请求量已达上限') || message.includes('OVER MONTHLY LIMIT')) {
+    return '本月请求量已达上限，请下月再试或升级套餐'
+  }
+  if (message.includes('INVALID HOST')) {
+    return 'HEFENG_API_HOST 配置不正确，请检查和风控制台中的 API Host'
+  }
+  if (message.includes('和风天气 API 路径不存在') || message.includes('NOT FOUND')) {
+    return '和风天气接口路径不存在，请检查 API Host 配置'
+  }
+  if (message.includes('和风天气 Geo 接口仅支持 GET 请求') || message.includes('METHOD NOT ALLOWED')) {
+    return '请求方式错误，当前接口仅支持 GET'
+  }
+  if (message.includes('和风天气服务发生异常') || message.includes('UNKNOWN ERROR')) {
+    return '和风天气服务暂时异常，请稍后重试'
+  }
+  if (message.includes('和风天气 API') || message.includes('和风天气')) {
+    return message
+  }
+  if (message.includes('缺少 location')) {
+    return '请输入城市名称'
+  }
+  if (message.includes('请求超时')) {
+    return '请求超时，请检查网络后重试'
+  }
+  return message
+}
+
 async function fetchNominatimData(url: string, label: string) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 10000)
   try {
     const res = await fetch(url, { signal: controller.signal })
+    const payload = await res.json()
     if (!res.ok) {
-      throw new Error(`${label}错误: ${res.status}`)
+      throw new Error(getApiErrorMessage(payload) || `${label}错误: ${res.status}`)
     }
-    const data = await res.json()
-    return mapNominatimCandidates(data)
+
+    // Compatible with both our wrapped server API response and raw Nominatim array responses.
+    if (Array.isArray(payload)) {
+      return mapNominatimCandidates(payload)
+    }
+
+    if (!payload?.success) {
+      throw new Error(getApiErrorMessage(payload))
+    }
+    return mapNominatimCandidates(payload.data)
   } catch (err: any) {
     if (err.name === 'AbortError') {
       throw new Error('请求超时，请检查网络连接')
@@ -291,20 +345,10 @@ async function getNominatimCandidates(cityName: string) {
     const canAccessOverseas = await checkOverseasNetworkAccess()
 
     if (canAccessOverseas) {
-      try {
-        return await fetchNominatimData(nominatimUrl, 'Nominatim API')
-      } catch (browserError) {
-        console.warn('浏览器直连失败，尝试服务端代理', browserError)
-        return await fetchNominatimData(`/api/nominatim?q=${q}`, '服务端 Nominatim')
-      }
-    } else {
-      try {
-        return await fetchNominatimData(`/api/nominatim?q=${q}`, '服务端 Nominatim')
-      } catch (serverError) {
-        console.warn('服务端 Nominatim 失败，尝试浏览器直连', serverError)
-        return await fetchNominatimData(nominatimUrl, 'Nominatim API')
-      }
+      return await fetchNominatimData(nominatimUrl, 'Nominatim API')
     }
+
+    return await fetchNominatimData(`/api/nominatim?q=${q}`, '服务端 Nominatim')
   }
 
   return await fetchNominatimData(nominatimUrl, 'Nominatim API')
@@ -355,18 +399,22 @@ async function onSearch() {
       const timeoutId = setTimeout(() => controller.abort(), 10000)
 
       try {
-        const geoApiUrl = getHefengGeoApiUrl('/v2/city/lookup')
-        const res = await fetch(`${geoApiUrl}?key=${hefengKey}&location=${encodeURIComponent(city.value)}`, {
+        const res = await fetch(`/api/hefeng-geo?location=${encodeURIComponent(city.value)}`, {
           signal: controller.signal
         })
 
         clearTimeout(timeoutId)
 
+        const payload = await res.json()
         if (!res.ok) {
-          throw new Error(`和风天气 API 错误: ${res.status}`)
+          throw new Error(getApiErrorMessage(payload))
         }
 
-        const data = await res.json()
+        if (!payload?.success) {
+          throw new Error(getApiErrorMessage(payload))
+        }
+
+        const data = payload.data
         if (data.code !== '200' || !data.location?.length) {
           throw new Error('未找到该城市')
         }
@@ -385,7 +433,7 @@ async function onSearch() {
     if (err.message?.includes('ECONNRESET') || err.message?.includes('fetch')) {
       error.value = '网络连接失败，请检查网络后重试'
     } else {
-      error.value = err.message || '查询失败'
+      error.value = normalizeErrorMessage(err)
     }
   } finally {
     loading.value = false

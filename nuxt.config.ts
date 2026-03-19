@@ -85,9 +85,6 @@ export default defineNuxtConfig({
     // 缓存过期时间（分钟），默认90分钟（和风天气逐天预报更新频率为60分钟）
     cacheExpireMinutes: process.env.CACHE_EXPIRE_MINUTES ? parseInt(process.env.CACHE_EXPIRE_MINUTES) : 90,
     public: {
-      hefengApiKey: process.env.HEFENG_API_KEY,
-      // 和风天气API Host（可选），前端也需要使用
-      hefengApiHost: process.env.HEFENG_API_HOST,
       geoApiProvider: normalizedGeoProvider,
       // 是否通过服务端代理访问 Nominatim，默认 false（浏览器直连）
       // 可选值：'true'（服务端代理）、'false'（浏览器直连）、'auto'（自动检测）

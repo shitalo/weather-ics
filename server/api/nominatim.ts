@@ -1,13 +1,12 @@
+import { apiError, apiSuccess } from '../utils/api'
+
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const search = (query.q as string) || (query.query as string) || ''
   const keyword = search.trim()
 
   if (!keyword) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: '缺少查询参数'
-    })
+    return apiError('MISSING_QUERY', '缺少查询参数')
   }
 
   const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(keyword)}&format=json&addressdetails=1&limit=10`
@@ -25,30 +24,28 @@ export default defineEventHandler(async (event) => {
     })
 
     if (!res.ok) {
-      throw createError({
-        statusCode: res.status,
-        statusMessage: `Nominatim请求失败(${res.status})`
+      return apiError('NOMINATIM_REQUEST_FAILED', `Nominatim 请求失败 (${res.status})`, {
+        source: 'provider:nominatim',
+        details: {
+          provider: 'nominatim',
+          httpStatus: res.status
+        }
       })
     }
 
-    return await res.json()
+    return apiSuccess(await res.json())
   } catch (error: any) {
     if (error.name === 'AbortError') {
-      throw createError({
-        statusCode: 504,
-        statusMessage: 'Nominatim请求超时'
+      return apiError('NOMINATIM_TIMEOUT', 'Nominatim 请求超时', {
+        source: 'provider:nominatim'
       })
     }
-    if (error.statusCode) {
-      throw error
-    }
-    console.error('Nominatim服务端请求失败:', error)
-    throw createError({
-      statusCode: 502,
-      statusMessage: 'Nominatim服务不可用'
+
+    console.error('Nominatim 服务端请求失败:', error)
+    return apiError('NOMINATIM_UNAVAILABLE', 'Nominatim 服务不可用', {
+      source: 'provider:nominatim'
     })
   } finally {
     clearTimeout(timeoutId)
   }
 })
-
