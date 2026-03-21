@@ -46,14 +46,16 @@ export function initDatabase(config?: any) {
 
   try {
     pool = mysql.createPool(dbConfig)
-    console.log(`[数据库连接] MySQL连接池初始化成功，时区设置: ${DB_TIMEZONE} (Asia/Shanghai)`)
+    console.log(`[数据库连接] MySQL连接池初始化成功 - host: ${dbConfig.host}, port: ${dbConfig.port}, database: ${dbConfig.database}, timezone: ${DB_TIMEZONE} (${TIMEZONE})`)
     
     // 在连接池初始化后，设置一个测试连接的时区，确保时区设置可用
     // 注意：由于连接池的特性，我们需要在使用连接时设置时区
     // 这里只是验证连接池可用
     return pool
   } catch (error) {
-    console.error('[数据库连接] MySQL连接池初始化失败:', error)
+    const err = error instanceof Error ? error : new Error(String(error))
+    console.error(`[数据库连接] MySQL连接池初始化失败 - 错误信息: ${err.message}`)
+    console.error('[数据库连接] 错误堆栈:', err.stack)
     throw error
   }
 }
@@ -69,9 +71,12 @@ async function ensureTimezone(connection: mysql.PoolConnection): Promise<void> {
 export function getPool(): mysql.Pool | null {
   if (!pool) {
     try {
+      console.log('[数据库连接] 连接池未初始化，尝试懒加载初始化')
       initDatabase()
     } catch (error) {
-      console.error('无法初始化数据库连接池:', error)
+      const err = error instanceof Error ? error : new Error(String(error))
+      console.error(`[数据库连接] 无法初始化数据库连接池 - 错误信息: ${err.message}`)
+      console.error('[数据库连接] 错误堆栈:', err.stack)
       return null
     }
   }
@@ -107,11 +112,14 @@ export async function initTables() {
   `
 
   try {
+    console.log('[数据库初始化] 开始初始化数据库表结构 - table: weather_cache')
     // 时区已在连接池配置中设置，直接执行SQL
     await pool.execute(createTableSQL)
-    console.log('[数据库初始化] 数据库表初始化成功')
+    console.log('[数据库初始化] 数据库表初始化成功 - table: weather_cache')
   } catch (error) {
-    console.error('[数据库初始化] 数据库表初始化失败:', error)
+    const err = error instanceof Error ? error : new Error(String(error))
+    console.error(`[数据库初始化] 数据库表初始化失败 - table: weather_cache, 错误信息: ${err.message}`)
+    console.error('[数据库初始化] 错误堆栈:', err.stack)
     throw error
   }
 }
@@ -136,7 +144,7 @@ export async function saveWeatherData(
 ): Promise<void> {
   const pool = getPool()
   if (!pool) {
-    console.warn('数据库连接池未初始化，跳过保存天气数据')
+    console.warn('[数据库保存] 数据库连接池未初始化，跳过保存天气数据')
     return
   }
 
@@ -144,7 +152,7 @@ export async function saveWeatherData(
   const lonNum = parseFloat(lon)
 
   if (isNaN(latNum) || isNaN(lonNum)) {
-    console.warn('无效的经纬度，跳过保存:', { lat, lon })
+    console.warn(`[数据库保存] 无效的经纬度，跳过保存 - lat: ${lat}, lon: ${lon}`)
     return
   }
 
@@ -153,9 +161,11 @@ export async function saveWeatherData(
     // 使用事务批量插入或更新
     // 时区已在连接池配置中设置，无需单独设置
     const connection = await pool.getConnection()
+    console.log(`[数据库保存] 已获取数据库连接 - lat: ${latNum}, lon: ${lonNum}, city: ${city}`)
     
     try {
       await connection.beginTransaction()
+      console.log(`[数据库保存] 事务已开始 - lat: ${latNum}, lon: ${lonNum}, city: ${city}`)
 
       for (const day of weatherDays) {
         // 将日期格式从 yyyyMMdd 转换为 yyyy-MM-dd
@@ -260,6 +270,7 @@ export async function getCachedWeatherData(
 }>> {
   const pool = getPool()
   if (!pool) {
+    console.warn(`[数据库查询] 数据库连接池未初始化，跳过历史数据查询 - lat: ${lat}, lon: ${lon}`)
     return []
   }
 
@@ -267,6 +278,7 @@ export async function getCachedWeatherData(
   const lonNum = parseFloat(lon)
 
   if (isNaN(latNum) || isNaN(lonNum)) {
+    console.warn(`[数据库查询] 历史数据查询参数无效，返回空结果 - lat: ${lat}, lon: ${lon}`)
     return []
   }
 
@@ -381,7 +393,7 @@ export async function getCachedWeatherDataFromToday(
   const pool = getPool()
   if (!pool) {
     // 连接池未初始化，抛出异常让上层代码回退到API
-    console.error(`[数据库] 连接池未初始化 - lat: ${lat}, lon: ${lon}, todayDate: ${todayDate}`)
+    console.error(`[数据库连接] 连接池未初始化，无法查询今日及之后天气 - lat: ${lat}, lon: ${lon}, todayDate: ${todayDate}`)
     throw new Error('数据库连接池未初始化')
   }
 
@@ -390,7 +402,7 @@ export async function getCachedWeatherDataFromToday(
 
   if (isNaN(latNum) || isNaN(lonNum)) {
     // 参数无效，返回空数据（这不是数据库错误）
-    console.warn(`[数据库] 参数无效 - lat: ${lat}, lon: ${lon}, todayDate: ${todayDate}`)
+    console.warn(`[数据库查询] 今日及之后天气查询参数无效，返回空结果 - lat: ${lat}, lon: ${lon}, todayDate: ${todayDate}`)
     return { data: [], latestUpdateTime: null }
   }
 

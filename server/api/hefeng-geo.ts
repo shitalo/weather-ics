@@ -1,4 +1,5 @@
 import { apiError, apiSuccess } from '../utils/api'
+import { QWeatherConfigError, resolveQWeatherApiBaseUrl } from '../qweather'
 
 type QWeatherProblem = {
   status?: number
@@ -16,16 +17,7 @@ type QWeatherErrorEnvelope = {
 }
 
 function getApiBaseUrl(apiHost?: string) {
-  if (!apiHost) {
-    return 'https://geoapi.qweather.com'
-  }
-
-  const host = String(apiHost).trim().replace(/\/$/, '')
-  return host.startsWith('http') ? host : `https://${host}`
-}
-
-function getApiPath(apiHost?: string) {
-  return apiHost ? '/geo/v2/city/lookup' : '/v2/city/lookup'
+  return resolveQWeatherApiBaseUrl(apiHost)
 }
 
 async function parseJsonSafely(res: Response) {
@@ -89,11 +81,11 @@ function buildErrorMessage(problem?: QWeatherProblem, fallback?: string) {
   }
 
   if (title === 'NO CREDIT') {
-    return '和风天气账号可用额度不足，请充值或调整套餐'
+    return '和风天气账户可用额度不足，请充值或调整套餐'
   }
 
   if (title === 'OVERDUE') {
-    return '和风天气账号存在逾期账单，请先完成支付'
+    return '和风天气账户存在逾期账单，请先完成支付'
   }
 
   if (title === 'SECURITY RESTRICTION') {
@@ -105,15 +97,15 @@ function buildErrorMessage(problem?: QWeatherProblem, fallback?: string) {
   }
 
   if (title === 'ACCOUNT SUSPENSION') {
-    return '和风天气账号已被冻结，请登录控制台处理'
+    return '和风天气账户已被冻结，请登录控制台处理'
   }
 
   if (title === 'FORBIDDEN') {
-    return '当前账号无权访问该和风天气数据'
+    return '当前账户无权访问该和风天气数据'
   }
 
   if (title === 'NOT FOUND') {
-    return '和风天气 API 路径不存在，请检查 API Host 或请求路径'
+    return '和风天气 Geo API 路径不存在，请检查 HEFENG_API_HOST 是否正确，并确认 GeoAPI 已切换到 /geo/v2 路径'
   }
 
   if (title === 'METHOD NOT ALLOWED') {
@@ -146,22 +138,42 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const location = String(query.location || '').trim()
 
+  console.log(`[和风Geo] 收到地理编码请求 - location: ${location || 'N/A'}`)
+
   if (!location) {
+    console.warn('[和风Geo] 缺少 location 参数')
     return apiError('MISSING_LOCATION', '缺少 location 参数')
   }
 
   if (!apiKey) {
+    console.warn('[和风Geo] 缺少 HEFENG_API_KEY 配置')
     return apiError('MISSING_HEFENG_API_KEY', '缺少 HEFENG_API_KEY 配置')
   }
 
-  const baseUrl = getApiBaseUrl(apiHost)
-  const path = getApiPath(apiHost)
-  const url = `${baseUrl}${path}?key=${encodeURIComponent(String(apiKey))}&location=${encodeURIComponent(location)}`
+  let baseUrl = ''
+  try {
+    baseUrl = getApiBaseUrl(apiHost)
+    console.log(`[和风Geo] API Host 校验通过 - baseUrl: ${baseUrl}, location: ${location}`)
+  } catch (error) {
+    if (error instanceof QWeatherConfigError) {
+      console.warn(`[和风Geo] API Host 校验失败 - location: ${location}, code: ${error.code}`)
+      return apiError(error.code, error.message, {
+        source: 'provider:qweather'
+      })
+    }
+    throw error
+  }
+
+  const url = `${baseUrl}/geo/v2/city/lookup?${new URLSearchParams({
+    key: String(apiKey),
+    location
+  }).toString()}`
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 10000)
 
   try {
+    console.log(`[和风Geo] 开始请求上游服务 - location: ${location}, url: ${url}`)
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
@@ -181,6 +193,7 @@ export default defineEventHandler(async (event) => {
         raw: payload || text || null
       }
 
+      console.warn(`[和风Geo] 上游服务返回非成功状态 - location: ${location}, httpStatus: ${res.status}, title: ${problem?.title || 'N/A'}`)
       return apiError(
         'HEFENG_GEO_REQUEST_FAILED',
         buildErrorMessage(problem, payload?.message || payload?.msg || text || ''),
@@ -192,15 +205,25 @@ export default defineEventHandler(async (event) => {
     }
 
     const data = await res.json()
+    console.log(`[和风Geo] 地理编码成功 - location: ${location}, resultCount: ${Array.isArray(data?.location) ? data.location.length : 0}`)
     return apiSuccess(data)
   } catch (error: any) {
+    if (error instanceof QWeatherConfigError) {
+      console.warn(`[和风Geo] API Host 校验失败 - location: ${location}, code: ${error.code}`)
+      return apiError(error.code, error.message, {
+        source: 'provider:qweather'
+      })
+    }
+
     if (error.name === 'AbortError') {
+      console.warn(`[和风Geo] 上游服务请求超时 - location: ${location}, timeoutMs: 10000`)
       return apiError('HEFENG_GEO_TIMEOUT', '和风天气 API 请求超时', {
         source: 'provider:qweather'
       })
     }
 
-    console.error('和风天气地理接口请求失败:', error)
+    console.error(`[和风Geo] 地理接口请求失败 - location: ${location}, 错误信息: ${error.message}`)
+    console.error('[和风Geo] 错误堆栈:', error.stack)
     return apiError('HEFENG_GEO_UNAVAILABLE', '和风天气 API 不可用', {
       source: 'provider:qweather'
     })

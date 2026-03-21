@@ -1,446 +1,327 @@
-# 天气订阅日历 (Weather ICS)
+# Weather ICS
 
-一个基于 Nuxt 3 的天气订阅服务，可以将天气预报转换为 iCalendar (.ics) 格式，支持添加到各种日历应用中。
+把天气预报变成可订阅的日历链接。
 
-## 🌟 功能特性
+`Weather ICS` 是一个基于 Nuxt 3 的天气订阅服务。用户输入城市、街道或景点名称后，系统会完成地理编码、获取天气、生成 `.ics` 内容，并返回可以长期订阅的日历地址，适合添加到 Apple Calendar、Google Calendar、Outlook 或团队协作日历中。
 
-- **城市搜索**：支持中文城市名搜索，自动匹配地理位置
-- **天气订阅**：生成7天天气预报的日历订阅链接
-- **多API支持**：支持和风天气API和Nominatim地理编码API
-- **IP定位**：支持通过环境变量开启 IP 定位兜底
-- **现代化UI**：响应式设计，支持移动端和桌面端
-- **一键复制**：快速复制订阅链接到剪贴板
-- **多平台部署**：支持Vercel、Cloudflare等平台部署
-- **数据缓存**：可选MySQL数据库缓存功能，自动保存历史天气数据，支持查看历史缓存数据（可配置天数，默认31天）
-- **智能缓存**：优先使用数据库缓存，减少API调用，数据超过指定时间（默认90分钟，可配置）自动刷新
-- **缓存标识**：ICS详情中显示数据更新时间，缓存数据会标注[缓存]标识
+## 为什么用它
 
-## 🏗️ 技术架构
+- 订阅而不是手动查看：把天气直接放进日历
+- 支持模糊地名搜索：城市、区县、街道、景点都可以尝试
+- 支持和风 GeoAPI 与 Nominatim 两套地理编码方案
+- 可选 MySQL 缓存，减少重复请求并保留历史天气数据
+- 支持 IP 定位兜底，在未传位置参数时自动补足位置
+- 服务端日志已统一，方便排查缓存、上游请求和部署问题
 
-### 前端技术栈
-- **Nuxt 3** - Vue 3 全栈框架
-- **Vue 3** - 渐进式JavaScript框架
-- **TypeScript** - 类型安全的JavaScript
+## 重要升级说明
 
-### 后端服务
-- **Nuxt Server API** - 服务端API路由
-- **和风天气API** - 天气预报数据源
-- **Nominatim API** - 地理编码服务（可选）
-- **ip-api.com** - IP地理位置服务
-- **MySQL数据库** - 天气数据缓存（可选）
+当前版本是一次重要更新。
 
-## 🔧 工作原理
+项目已仅支持和风天气控制台中的专属 API Host，不再兼容以下旧公共域名：
 
-1. **城市搜索**：用户输入城市名，系统调用地理编码API获取经纬度
-2. **天气获取**：使用经纬度或城市ID调用和风天气API获取7天预报
-3. **ICS生成**：将天气数据转换为iCalendar格式
-4. **订阅链接**：生成包含天气信息的日历订阅URL
+- `devapi.qweather.com`
+- `api.qweather.com`
+- `geoapi.qweather.com`
 
-### API调用流程
-
-```
-用户输入城市名 → 地理编码API → 获取经纬度 → 检查数据库缓存 → 
-  ├─ 缓存有效（默认90分钟内，可通过环境变量配置）→ 使用缓存数据
-  └─ 缓存无效/不存在 → 和风天气API → 7天预报 → 保存到数据库
-→ 合并历史数据 → 生成ICS → 返回订阅链接
-```
-
-### 缓存机制
-
-1. **优先使用缓存**：系统会优先从数据库获取今日及之后的数据
-2. **过期检查**：如果缓存数据超过指定时间（默认90分钟，可通过 `CACHE_EXPIRE_MINUTES` 环境变量配置），自动从API获取新数据。默认值90分钟是因为和风天气逐天天气预报的更新频率为60分钟，设置90分钟可以确保在数据更新后有足够的缓冲时间
-3. **容错处理**：数据库连接失败时，自动回退到使用API获取数据
-4. **历史数据**：自动合并历史缓存数据（可配置最大天数，默认31天）
-
-## 📋 环境变量配置
-
-> 所有环境变量的**大小写均不敏感**：  
-> - `GEO_API_PROVIDER` 会被统一转为小写后再判断  
-> - `USE_SERVER_NOMINATIM` 会把值转为小写字符串后再对比（支持 `true` / `false` / `auto`）  
-> - `ENABLE_DATABASE_CACHE` 会把值转为小写字符串后再对比（支持 `true` / `false`）  
-> - `ENABLE_IP_LOCATION_FALLBACK` 会把值转为小写字符串后再对比（支持 `true` / `false`）  
-> - MySQL 相关环境变量（`MYSQL_HOST`、`MYSQL_USER` 等）直接使用原始值
-
-### 环境变量一览
-
-| 变量名 | 是否必需 | 默认值 | 示例值 | 说明 |
-|--------|----------|--------|--------|------|
-| `HEFENG_API_KEY` | ✅ 必需 | 无 | `your_hefeng_api_key_here` | 和风天气 API Key，用于获取 7 天预报数据 |
-| `HEFENG_API_HOST` | ⭕ 可选 | 无 | `abc.def.qweatherapi.com` | 和风天气 API Host，用于替代公共API域名，提供更高的API安全等级。如果未配置，将使用旧的公共域名（`devapi.qweather.com` 和 `geoapi.qweather.com`）。**注意**：旧的公共域名将在2026年停止服务，建议尽快迁移到API Host。详情参考[和风天气公告](https://blog.qweather.com/announce/public-api-domain-change-to-api-host/) |
-| `GEO_API_PROVIDER` | ⭕ 可选 | `hefeng` | `hefeng` / `nominatim` | 地理编码提供商，支持和风 GeoAPI 或 OpenStreetMap Nominatim，值大小写不敏感（如 `NOMINATIM` 也可） |
-| `USE_SERVER_NOMINATIM` | ⭕ 可选 | `false` | `true` / `false` / `auto` | 是否通过服务端代理访问 Nominatim，值大小写不敏感：<br/>- `false`：默认值，直接通过浏览器访问 Nominatim<br/>- `true`：优先通过服务端代理（`/api/nominatim`），失败回退到浏览器直连<br/>- `auto`：自动检测网络，能访问境外网站则浏览器直连，否则使用服务端代理 |
-| `ENABLE_DATABASE_CACHE` | ⭕ 可选 | `false` | `true` / `false` | 是否启用数据库缓存功能，值大小写不敏感：<br/>- `false`：默认值，不启用数据库缓存功能<br/>- `true`：启用数据库缓存功能，自动保存和读取天气数据<br/>**注意**：需要同时配置 MySQL 相关环境变量才能生效 |
-| `ENABLE_IP_LOCATION_FALLBACK` | ⭕ 可选 | `false` | `true` / `false` | 是否在未传 `locationId` 和 `lat`/`lon` 时启用 IP 定位兜底，值大小写不敏感：<br/>- `false`：默认值，不自动通过 IP 推断位置<br/>- `true`：自动通过 IP 获取经纬度和城市信息 |
-| `MYSQL_HOST` | ⭕ 可选 | 无 | `localhost` / `192.168.1.100` | MySQL 数据库主机地址 |
-| `MYSQL_PORT` | ⭕ 可选 | `3306` | `3306` | MySQL 数据库端口 |
-| `MYSQL_USER` | ⭕ 可选 | 无 | `root` | MySQL 数据库用户名 |
-| `MYSQL_PASSWORD` | ⭕ 可选 | 无 | `your_password` | MySQL 数据库密码 |
-| `MYSQL_DATABASE` | ⭕ 可选 | 无 | `weather_ics` | MySQL 数据库名称 |
-| `MAX_HISTORY_DAYS` | ⭕ 可选 | `31` | `31` / `60` / `90` 等 | 历史天气数据的最大查询天数，默认31天 |
-| `CACHE_EXPIRE_MINUTES` | ⭕ 可选 | `90` | `30` / `60` / `90` / `120` 等 | 缓存过期时间（分钟），默认90分钟。超过此时间后，系统会自动从API获取新数据。默认值90分钟是因为和风天气逐天天气预报的更新频率为60分钟 |
-| `NITRO_PRESET` | ⭕ 可选 | 自动检测 | `vercel` / `cloudflare` 等 | 手动指定 Nitro 部署预设，通常不需要设置，除非想覆盖自动检测结果 |
-
-### 🎯 智能平台检测
-
-项目支持自动检测部署平台，无需手动设置 `NITRO_PRESET`：
-
-- **Vercel**：自动检测 `VERCEL` 环境变量
-- **Cloudflare Pages**：自动检测 `CF_PAGES` 或 `CLOUDFLARE` 环境变量  
-- **Netlify**：自动检测 `NETLIFY` 环境变量
-- **Railway**：自动检测 `RAILWAY_STATIC_URL` 环境变量
-- **Heroku**：自动检测 `HEROKU_APP_NAME` 环境变量
-
-**优先级**：手动设置的 `NITRO_PRESET` > 自动检测 > 默认配置
-
-## 🚀 快速开始
-
-### 1. 克隆项目
+你现在必须配置：
 
 ```bash
-git clone <repository-url>
-cd weather-ics
+HEFENG_API_HOST=abc.def.qweatherapi.com
 ```
 
-### 2. 安装依赖
+升级后接口实际访问方式如下：
+
+- 天气接口：`https://你的APIHost/v7/weather/7d`
+- Geo 接口：`https://你的APIHost/geo/v2/city/lookup`
+
+如果仍然沿用旧公共域名，服务会直接报错并拒绝请求。
+
+这意味着：
+
+- 本次更新可能与上一个版本的环境变量配置不兼容
+- 请先确认部署平台上的 `HEFENG_API_HOST` 已更新，再执行升级
+
+## 功能特性
+
+- 地理编码：支持和风 GeoAPI，也支持 OpenStreetMap Nominatim
+- 天气订阅：将天气预报转换为 iCalendar (`.ics`) 订阅源
+- 历史数据合并：启用缓存后，可将历史天气一并写入生成结果
+- 智能缓存：优先读取数据库中的新鲜数据，过期后自动刷新
+- 平台兼容：支持常见系统日历与在线日历工具
+- 自动部署适配：可自动识别 Vercel、Cloudflare Pages、Netlify、Railway、Heroku
+
+## 工作流程
+
+```text
+输入地点名称
+-> 地理编码
+-> 获取经纬度或 locationId
+-> 查询数据库缓存（可选）
+-> 缓存有效则直接使用
+-> 否则请求和风天气 7 日预报
+-> 异步回写数据库（可选）
+-> 合并历史缓存数据（可选）
+-> 生成 ICS
+-> 返回订阅链接
+```
+
+## 快速开始
+
+### 1. 安装依赖
 
 ```bash
 pnpm install
 ```
 
-### 3. 配置环境变量
+### 2. 配置环境变量
 
-创建 `.env` 文件：
+创建 `.env`：
 
 ```bash
 HEFENG_API_KEY=your_hefeng_api_key_here
 HEFENG_API_HOST=abc.def.qweatherapi.com
+
 GEO_API_PROVIDER=hefeng
 USE_SERVER_NOMINATIM=false
+
 ENABLE_DATABASE_CACHE=false
 ENABLE_IP_LOCATION_FALLBACK=false
 
-# MySQL数据库配置（可选，用于缓存天气数据）
-# 需要同时设置 ENABLE_DATABASE_CACHE=true 才能启用数据库缓存功能
-# 启用后，系统会自动保存用户查询的天气数据到数据库
-# 生成ICS时会自动从数据库读取该经纬度的历史缓存数据
 MYSQL_HOST=localhost
 MYSQL_PORT=3306
 MYSQL_USER=root
 MYSQL_PASSWORD=your_password
 MYSQL_DATABASE=weather_ics
 
-# 历史天气数据最大查询天数（可选）
-# 默认31天，可根据需要调整
 MAX_HISTORY_DAYS=31
-
-# 缓存过期时间（分钟）（可选）
-# 默认90分钟，可根据需要调整
-# 超过此时间后，系统会自动从API获取新数据
-# 默认值90分钟是因为和风天气逐天天气预报的更新频率为60分钟
 CACHE_EXPIRE_MINUTES=90
-
-# 可选值说明：
-# HEFENG_API_HOST:
-#   - 可选：和风天气API Host，用于替代公共API域名
-#   - 如果未配置，将使用旧的公共域名（devapi.qweather.com 和 geoapi.qweather.com）
-#   - 旧的公共域名将在2026年停止服务，建议尽快迁移
-#   - 可在和风天气控制台查看你的API Host
-# USE_SERVER_NOMINATIM:
-#   - false: 直接通过浏览器访问 Nominatim（默认）
-#   - true: 优先通过服务端代理访问 Nominatim
-#   - auto: 自动检测网络，智能选择连接方式
-# ENABLE_DATABASE_CACHE:
-#   - false: 不启用数据库缓存功能（默认）
-#   - true: 启用数据库缓存功能，需要同时配置 MySQL 相关环境变量
-# ENABLE_IP_LOCATION_FALLBACK:
-#   - false: 不启用 IP 定位兜底（默认）
-#   - true: 当未传 locationId 和 lat/lon 时，自动通过 IP 获取经纬度和城市信息
-# MAX_HISTORY_DAYS:
-#   - 默认值: 31天
-#   - 说明: 控制从数据库查询历史天气数据的最大天数范围
-#   - 示例: 设置为60表示最多查询过去60天的历史数据
-# CACHE_EXPIRE_MINUTES:
-#   - 默认值: 90分钟
-#   - 说明: 控制缓存数据的过期时间，超过此时间后会自动从API获取新数据。默认值90分钟是因为和风天气逐天天气预报的更新频率为60分钟
-#   - 示例: 设置为60表示缓存60分钟后过期
 ```
 
-### 4. 初始化数据库（可选）
+### 3. 初始化数据库（可选）
 
-如果配置了MySQL数据库，需要先创建数据库和表结构：
+如果你需要启用数据库缓存，先创建数据库并执行初始化脚本：
 
 ```bash
-# 1. 登录MySQL
 mysql -u root -p
-
-# 2. 创建数据库
 CREATE DATABASE IF NOT EXISTS weather_ics CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-# 3. 使用数据库
 USE weather_ics;
-
-# 4. 执行初始化SQL脚本（项目根目录下的 database/init.sql）
-# 或者在MySQL客户端中执行：
 SOURCE database/init.sql;
 ```
 
-或者直接执行SQL文件：
+也可以直接执行：
+
 ```bash
 mysql -u root -p weather_ics < database/init.sql
 ```
 
-**注意**：如果不配置MySQL数据库，应用仍然可以正常运行，只是不会缓存天气数据。
-
-### 5. 启动开发服务器
+### 4. 启动开发环境
 
 ```bash
-# 本地开发
 pnpm dev
+```
 
-# 局域网访问（支持移动端测试）
+如需局域网访问：
+
+```bash
 pnpm dev:lan
 ```
 
-### 6. 构建生产版本
+### 5. 构建生产版本
 
 ```bash
 pnpm build
 pnpm preview
 ```
 
-## 🌐 API接口
+## 环境变量说明
 
-### 天气ICS订阅接口
+| 变量名 | 必需 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `HEFENG_API_KEY` | 是 | 无 | 和风天气 API Key |
+| `HEFENG_API_HOST` | 是 | 无 | 和风天气专属 API Host，仅支持控制台中的 API Host |
+| `GEO_API_PROVIDER` | 否 | `hefeng` | 地理编码提供方，可选 `hefeng` 或 `nominatim` |
+| `USE_SERVER_NOMINATIM` | 否 | `false` | Nominatim 访问方式，可选 `true`、`false`、`auto` |
+| `ENABLE_DATABASE_CACHE` | 否 | `false` | 是否启用 MySQL 天气缓存 |
+| `ENABLE_IP_LOCATION_FALLBACK` | 否 | `false` | 未传位置参数时是否启用 IP 定位兜底 |
+| `MYSQL_HOST` | 否 | 无 | MySQL 主机 |
+| `MYSQL_PORT` | 否 | `3306` | MySQL 端口 |
+| `MYSQL_USER` | 否 | 无 | MySQL 用户名 |
+| `MYSQL_PASSWORD` | 否 | 无 | MySQL 密码 |
+| `MYSQL_DATABASE` | 否 | 无 | MySQL 数据库名 |
+| `MAX_HISTORY_DAYS` | 否 | `31` | 合并历史天气缓存的最大天数 |
+| `CACHE_EXPIRE_MINUTES` | 否 | `90` | 缓存过期时间，单位分钟 |
+| `NITRO_PRESET` | 否 | 自动检测 | Nitro 部署目标，如 `vercel`、`cloudflare` |
 
-**端点**：`GET /api/weather-ics`
+当前实现中的补充规则：
 
-**参数**：
+- `GEO_API_PROVIDER` 会被统一转为小写后判断
+- `USE_SERVER_NOMINATIM` 支持 `true`、`false`、`auto`
+- `ENABLE_DATABASE_CACHE` 与 `ENABLE_IP_LOCATION_FALLBACK` 支持 `true`、`false`
+- 部署平台会自动检测 `VERCEL`、`CF_PAGES`、`NETLIFY`、`RAILWAY_STATIC_URL`、`HEROKU_APP_NAME`
 
-| 参数 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| `locationId` | string | 可选 | 和风天气城市ID |
-| `lat` | string | 可选 | 纬度 |
-| `lon` | string | 可选 | 经度 |
-| `city` | string | 可选 | 城市名称（用于显示） |
+## API 一览
 
-**使用方式**：
+### `GET /api/weather-ics`
 
-1. **使用城市ID**：
-   ```
-   /api/weather-ics?locationId=101010100&city=北京
-   ```
+生成天气日历订阅内容。
 
-2. **使用经纬度**：
-   ```
-   /api/weather-ics?lat=39.9042&lon=116.4074&city=北京
-   ```
+参数：
 
-3. **自动IP定位**：
-   ```
-   /api/weather-ics
-   ```
+| 参数 | 必需 | 说明 |
+| --- | --- | --- |
+| `locationId` | 否 | 和风城市 ID |
+| `lat` | 否 | 纬度 |
+| `lon` | 否 | 经度 |
+| `city` | 否 | 展示用地点名称 |
 
-**返回格式**：`text/calendar` (iCalendar格式)
+规则：
 
-**缓存机制**：
-- 如果启用了数据库缓存功能，系统会优先从数据库获取数据
-- 缓存数据在指定时间内有效（默认90分钟，可通过 `CACHE_EXPIRE_MINUTES` 环境变量配置），超过此时间会自动从API获取新数据。默认值90分钟是因为和风天气逐天天气预报的更新频率为60分钟
-- 数据库查询失败时，自动回退到使用API获取数据
-- 历史数据查询范围可通过 `MAX_HISTORY_DAYS` 环境变量配置（默认31天）
+- 需要提供 `locationId`
+- 或者同时提供 `lat` 和 `lon`
+- 如果启用了 `ENABLE_IP_LOCATION_FALLBACK=true`，未传位置参数时会尝试按客户端 IP 自动定位
 
-## 🔌 第三方API
+示例：
 
-### 和风天气API
-
-- **天气预报**：`https://devapi.qweather.com/v7/weather/7d`（或使用API Host）
-- **地理编码**：`https://geoapi.qweather.com/v2/city/lookup`（或使用API Host）
-- **认证方式**：API Key
-- **请求限制**：根据和风天气套餐限制
-- **API Host**：建议使用API Host替代公共API域名，提供更高的API安全等级。旧的公共域名将在2026年停止服务，详情参考[和风天气公告](https://blog.qweather.com/announce/public-api-domain-change-to-api-host/)
-
-### Nominatim API (OpenStreetMap)
-
-- **地理编码**：`https://nominatim.openstreetmap.org/search`
-- **认证方式**：无需认证
-- **请求限制**：1秒1次请求
-
-### ip-api.com
-
-- **IP定位**：`http://ip-api.com/json/{ip}`
-- **认证方式**：无需认证
-- **请求限制**：每分钟45次
-
-## 📱 使用说明
-
-### 1. 搜索城市
-在首页输入框中输入城市名称（如：北京、上海、广州等）
-
-### 2. 选择位置
-从搜索结果中选择准确的城市位置
-
-### 3. 获取订阅链接
-系统自动生成包含天气信息的日历订阅链接
-
-### 4. 添加到日历
-- **复制链接**：点击"复制链接"按钮
-- **打开链接**：点击"打开链接"按钮，选择日历应用
-
-### 5. 订阅效果
-日历中将显示每日天气信息，包括：
-- 天气图标和描述
-- 最高/最低温度
-- 城市名称
-- 数据更新时间（如果数据来自缓存，会显示[缓存]标识）
-- 数据更新时间（如果数据来自缓存，会显示[缓存]标识）
-
-## 🚀 部署指南
-
-### Vercel部署
-
-1. **推送代码**到GitHub/GitLab/Bitbucket
-2. **导入项目**到Vercel，自动识别Nuxt
-3. **配置环境变量**：
-   - `HEFENG_API_KEY`（必需）
-   - `HEFENG_API_HOST`（可选，建议配置，用于替代公共API域名）
-   - `GEO_API_PROVIDER`（可选，默认：`hefeng`）
-   - `USE_SERVER_NOMINATIM`（可选，默认：`false`，支持 `auto` 自动检测）
-   - `ENABLE_DATABASE_CACHE`（可选，默认：`false`，是否启用数据库缓存功能）
-   - `MYSQL_HOST`、`MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_DATABASE`（可选，用于启用数据缓存功能）
-   - `MAX_HISTORY_DAYS`（可选，默认：`31`，历史天气数据最大查询天数）
-   - `CACHE_EXPIRE_MINUTES`（可选，默认：`90`，缓存过期时间（分钟））
-   - `NITRO_PRESET=vercel`（可选，系统会自动检测）
-
-**注意**：Vercel会自动设置 `VERCEL` 环境变量，系统会自动检测并配置为 `vercel` preset。
-
-### Cloudflare部署
-
-1. **安装wrangler**：
-   ```bash
-   pnpm add -D wrangler
-   ```
-
-2. **配置wrangler.toml**：
-   ```toml
-   name = "weather-ics"
-   compatibility_date = "2024-01-01"
-   ```
-
-3. **设置环境变量**：
-   ```bash
-   wrangler secret put HEFENG_API_KEY
-   ```
-
-4. **部署**：
-   ```bash
-   wrangler deploy
-   ```
-
-**注意**：Cloudflare Pages会自动设置 `CF_PAGES` 环境变量，系统会自动检测并配置为 `cloudflare` preset。
-
-### 其他平台
-
-项目支持任何支持Nuxt 3的平台，如：
-- **Netlify**：自动检测 `NETLIFY` 环境变量
-- **Railway**：自动检测 `RAILWAY_STATIC_URL` 环境变量  
-- **Heroku**：自动检测 `HEROKU_APP_NAME` 环境变量
-- **自建服务器**：使用默认配置
-
-### 🎯 部署建议
-
-- **推荐**：让系统自动检测平台，无需手动设置 `NITRO_PRESET`
-- **特殊情况**：如需强制使用特定配置，可手动设置 `NITRO_PRESET`
-- **调试**：部署时查看构建日志，确认平台检测是否正常
-
-## 🛠️ 开发指南
-
-### 项目结构
-
+```text
+/api/weather-ics?locationId=101010100&city=北京
+/api/weather-ics?lat=39.9042&lon=116.4074&city=北京
 ```
+
+返回：
+
+- `text/calendar`
+- 可直接作为日历订阅地址使用
+
+### `GET /api/hefeng-geo`
+
+和风天气地理编码代理接口。
+
+示例：
+
+```text
+/api/hefeng-geo?location=北京
+```
+
+特点：
+
+- 使用 `HEFENG_API_HOST/geo/v2/city/lookup`
+- 会校验 API Host 是否为新的专属 Host
+- 会把常见上游错误转换为更易理解的中文提示
+
+### `GET /api/nominatim`
+
+Nominatim 地理编码代理接口。
+
+示例：
+
+```text
+/api/nominatim?q=beijing
+```
+
+特点：
+
+- 作为可选地理编码方案
+- 支持服务端代理访问
+- 对超时、非 200 和服务不可用提供统一错误结构
+
+## 缓存机制
+
+启用 `ENABLE_DATABASE_CACHE=true` 后，系统会：
+
+- 优先读取数据库中的今日及之后天气数据
+- 在缓存未过期时直接使用缓存
+- 在缓存过期或不存在时请求和风天气 API
+- 异步回写最新天气数据到数据库
+- 读取 `MAX_HISTORY_DAYS` 范围内的历史缓存并合并到 ICS 中
+
+默认缓存过期时间为 `90` 分钟。
+
+如果数据库不可用：
+
+- 主流程不会中断
+- 系统会自动回退到实时 API 获取数据
+
+## 部署说明
+
+项目支持自动识别以下平台：
+
+- Vercel
+- Cloudflare Pages
+- Netlify
+- Railway
+- Heroku
+
+也可以手动指定：
+
+```bash
+NITRO_PRESET=vercel
+```
+
+最少需要配置：
+
+```bash
+HEFENG_API_KEY=your_hefeng_api_key_here
+HEFENG_API_HOST=abc.def.qweatherapi.com
+```
+
+如果继续使用旧公共域名，部署完成后请求会直接失败。
+
+## 日志与排障
+
+项目日志已统一为结构化格式，例如：
+
+```text
+[天气ICS] 请求开始 - locationId: ..., lat: ..., lon: ..., city: ...
+[数据库查询] 查询完成 - 返回数据条数: ...
+[和风天气] 7日天气获取成功 - location: ..., resultCount: ...
+[错误] 错误堆栈: ...
+```
+
+这类日志会覆盖：
+
+- 请求入口
+- 缓存命中与过期判断
+- 上游接口调用
+- 数据库初始化、查询、保存
+- 超时、异常与错误堆栈
+
+适合在本地开发、云平台日志和服务器日志中快速定位问题。
+
+## 项目结构
+
+```text
 weather-ics/
-├── app.vue                 # 应用入口
-├── pages/
-│   └── index.vue          # 首页
-├── server/
-│   ├── api/
-│   │   ├── weather-ics.ts # ICS API接口
-│   │   └── nominatim.ts   # Nominatim代理接口
-│   ├── services/
-│   │   ├── weatherHeFeng.ts # 和风天气服务
-│   │   ├── weatherTypes.ts  # 类型定义
-│   │   └── database.ts      # MySQL数据库服务
-│   └── utils/
-│       └── db-init.ts       # 数据库初始化插件
-├── database/
-│   └── init.sql            # 数据库表结构SQL脚本
-├── nuxt.config.ts         # Nuxt配置
-└── package.json           # 项目依赖
+├─ app.vue
+├─ pages/
+│  └─ index.vue
+├─ server/
+│  ├─ api/
+│  │  ├─ weather-ics.ts
+│  │  ├─ hefeng-geo.ts
+│  │  └─ nominatim.ts
+│  ├─ qweather/
+│  │  └─ index.ts
+│  ├─ services/
+│  │  ├─ weatherHeFeng.ts
+│  │  ├─ weatherTypes.ts
+│  │  └─ database.ts
+│  └─ utils/
+│     ├─ api.ts
+│     └─ db-init.ts
+├─ database/
+│  └─ init.sql
+├─ nuxt.config.ts
+└─ package.json
 ```
 
-### 数据库缓存功能
+## 技术栈
 
-项目支持可选的MySQL数据库缓存功能：
+- Nuxt 3
+- Vue 3
+- TypeScript
+- Nitro Server API
+- MySQL（可选）
 
-**启用条件**：需要同时满足以下条件：
-- 设置环境变量 `ENABLE_DATABASE_CACHE=true`
-- 配置 MySQL 相关环境变量（`MYSQL_HOST`、`MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_DATABASE`）
+## License
 
-**功能特性**：
-
-1. **智能缓存**：
-   - 优先从数据库获取今日及之后的数据
-   - 如果缓存数据在指定时间内（默认90分钟，可通过 `CACHE_EXPIRE_MINUTES` 环境变量配置），直接使用缓存，不调用API。默认值90分钟是因为和风天气逐天天气预报的更新频率为60分钟
-   - 如果缓存数据超过指定时间，自动从API获取新数据并更新缓存
-   - 数据库查询失败时，自动回退到使用API获取数据
-
-2. **自动保存**：当用户通过API查询天气时，系统会自动将天气数据保存到数据库
-
-3. **历史查询**：
-   - 生成ICS时会自动从数据库读取该经纬度的历史缓存数据
-   - 与未来7天预报合并展示
-   - 可通过 `MAX_HISTORY_DAYS` 环境变量控制查询范围（默认31天）
-
-4. **数据更新**：如果数据库中已有相同经纬度和日期的数据，会自动更新为最新数据
-
-5. **容错处理**：数据库连接失败不会影响主流程，应用会继续正常运行
-
-6. **灵活控制**：即使配置了数据库，也可以通过 `ENABLE_DATABASE_CACHE=false` 来禁用缓存功能
-
-7. **时区统一**：
-   - 所有时间处理统一使用中国时区（Asia/Shanghai）
-   - 数据库连接也显式设置时区为 `+08:00`
-   - 确保存入数据库、从数据库读取、ICS生成等所有环节时间一致
-
-8. **缓存标识**：ICS详情描述中会显示数据实际更新时间，如果数据来自缓存，会标注[缓存]标识
-
-**数据库表结构**：
-- `weather_cache` 表存储天气数据
-- 唯一索引：`(lat, lon, date)` 确保每个位置每天只有一条记录
-- 自动时间戳：`created_at` 和 `updated_at` 字段自动记录创建和更新时间
-
-### 添加新的天气服务
-
-1. 在 `server/services/` 创建新的服务文件
-2. 实现统一的接口格式
-3. 在API路由中集成新服务
-
-### 自定义样式
-
-项目使用Vue 3的 `<style scoped>` 进行样式隔离，可根据需要修改 `pages/index.vue` 中的样式。
-
-## 📄 许可证
-
-MIT License
-
-## 🤝 贡献
-
-欢迎提交Issue和Pull Request！
-
-## 📞 支持
-
-如有问题，请通过以下方式联系：
-- 提交GitHub Issue
-- 发送邮件至：[your-email@example.com]
-
----
-
-**注意**：使用和风天气API需要注册开发者账号并获取API密钥。免费版有调用次数限制，请根据实际需求选择合适的套餐。
+MIT

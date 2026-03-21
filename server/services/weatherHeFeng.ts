@@ -1,62 +1,65 @@
-// 和风天气 API 适配器
+import { resolveQWeatherApiBaseUrl } from '../qweather'
 import type { WeatherDay } from './weatherTypes'
 
-/**
- * 获取和风天气API基础URL
- * 如果配置了API Host，使用API Host；否则使用旧的公共域名
- */
 function getApiBaseUrl(): string {
   const config = useRuntimeConfig()
-  const apiHost = config.hefengApiHost
-  
-  if (apiHost) {
-    // 使用API Host，确保URL格式正确（移除末尾的斜杠，添加协议）
-    const host = String(apiHost).trim().replace(/\/$/, '')
-    return host.startsWith('http') ? host : `https://${host}`
-  }
-  
-  // 向后兼容：使用旧的公共域名
-  return 'https://devapi.qweather.com'
+  return resolveQWeatherApiBaseUrl(config.hefengApiHost)
 }
 
-export async function getWeather7d({ locationId, lat, lon }: { locationId?: string, lat?: string, lon?: string }): Promise<WeatherDay[]> {
+export async function getWeather7d({
+  locationId,
+  lat,
+  lon
+}: {
+  locationId?: string
+  lat?: string
+  lon?: string
+}): Promise<WeatherDay[]> {
   const config = useRuntimeConfig()
-  const apiKey = config.hefengApiKey || ''
+  const apiKey = String(config.hefengApiKey || '').trim()
   const baseUrl = getApiBaseUrl()
-  
-  let url = ''
-  if (locationId) {
-    url = `${baseUrl}/v7/weather/7d?location=${locationId}&key=${apiKey}&lang=zh-hans`
-  } else if (lat && lon) {
-    url = `${baseUrl}/v7/weather/7d?location=${lon},${lat}&key=${apiKey}&lang=zh-hans`
-  } else {
+
+  if (!apiKey) {
+    throw new Error('缺少 HEFENG_API_KEY 配置')
+  }
+
+  const location = locationId || (lat && lon ? `${lon},${lat}` : '')
+  if (!location) {
     throw new Error('Missing locationId or lat/lon')
   }
-  
+
+  console.log(`[和风天气] 开始请求7日天气 - locationId: ${locationId || 'N/A'}, lat: ${lat || 'N/A'}, lon: ${lon || 'N/A'}, location: ${location}, baseUrl: ${baseUrl}`)
+
+  const url = `${baseUrl}/v7/weather/7d?${new URLSearchParams({
+    location,
+    key: apiKey,
+    lang: 'zh-hans'
+  }).toString()}`
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 15000)
+
   try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 15000) // 15秒超时
-    
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
         'User-Agent': 'weather-ics/1.0'
       }
     })
-    
-    clearTimeout(timeoutId)
-    
+
     if (!res.ok) {
+      console.warn(`[和风天气] 上游服务返回非成功状态 - location: ${location}, httpStatus: ${res.status}, statusText: ${res.statusText}`)
       throw new Error(`和风天气API错误: ${res.status} ${res.statusText}`)
     }
-    
+
     const data = await res.json()
-    
+
     if (data.code !== '200') {
+      console.warn(`[和风天气] 上游服务返回业务错误 - location: ${location}, code: ${data.code}, message: ${data.msg || '未知错误'}`)
       throw new Error(`和风天气API返回错误: ${data.code} - ${data.msg || '未知错误'}`)
     }
-    
-    // 适配为通用格式
+
+    console.log(`[和风天气] 7日天气获取成功 - location: ${location}, resultCount: ${Array.isArray(data.daily) ? data.daily.length : 0}`)
     return (data.daily || []).map((d: any) => ({
       date: d.fxDate,
       text: d.textDay,
@@ -65,17 +68,23 @@ export async function getWeather7d({ locationId, lat, lon }: { locationId?: stri
       icon: d.iconDay,
       wind: d.windDirDay,
       code: d.iconDay,
-      sunrise: d.sunrise || undefined, // 日出时间
-      sunset: d.sunset || undefined,  // 日落时间
+      sunrise: d.sunrise || undefined,
+      sunset: d.sunset || undefined,
     }))
   } catch (error: any) {
     if (error.name === 'AbortError') {
+      console.warn(`[和风天气] 请求超时 - location: ${location}, timeoutMs: 15000`)
       throw new Error('和风天气API请求超时')
     }
-    if (error.message.includes('ECONNRESET') || error.message.includes('fetch')) {
+    if (error.message?.includes('ECONNRESET') || error.message?.includes('fetch')) {
+      console.warn(`[和风天气] 网络连接失败 - location: ${location}`)
       throw new Error('网络连接失败，请稍后重试')
     }
+
+    console.error(`[和风天气] 请求7日天气失败 - location: ${location}, 错误信息: ${error.message}`)
+    console.error('[和风天气] 错误堆栈:', error.stack)
     throw error
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
-

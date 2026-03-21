@@ -173,7 +173,6 @@ onMounted(() => {
   }
 
   if (geoApiProvider === 'nominatim' && String(useServerNominatim).toLowerCase() === 'auto') {
-    // Pre-warm the connectivity check after the page loads so search can reuse the cached result.
     void checkOverseasNetworkAccess()
   }
 })
@@ -223,6 +222,15 @@ function normalizeErrorMessage(err: any) {
   if (message.includes('HEFENG_API_KEY')) {
     return '服务端未配置 HEFENG_API_KEY，请在部署平台添加环境变量并重新部署'
   }
+  if (message.includes('MISSING_HEFENG_API_HOST') || message.includes('缺少 HEFENG_API_HOST')) {
+    return '服务端未配置 HEFENG_API_HOST，请在和风控制台复制 API Host 后添加到部署环境变量'
+  }
+  if (message.includes('LEGACY_HEFENG_API_HOST') || message.includes('不能再使用 api.qweather.com')) {
+    return 'HEFENG_API_HOST 不能再填写旧公共域名，请改为和风控制台中的专属 API Host'
+  }
+  if (message.includes('INVALID_HEFENG_API_HOST') || message.includes('HEFENG_API_HOST 格式不正确')) {
+    return 'HEFENG_API_HOST 格式不正确，请仅填写和风控制台提供的 API Host 域名'
+  }
   if (message.includes('认证失败') || message.includes('UNAUTHORIZED')) {
     return '和风天气认证失败，请检查部署环境中的 HEFENG_API_KEY'
   }
@@ -244,8 +252,8 @@ function normalizeErrorMessage(err: any) {
   if (message.includes('INVALID HOST')) {
     return 'HEFENG_API_HOST 配置不正确，请检查和风控制台中的 API Host'
   }
-  if (message.includes('和风天气 API 路径不存在') || message.includes('NOT FOUND')) {
-    return '和风天气接口路径不存在，请检查 API Host 配置'
+  if (message.includes('和风天气 Geo API 路径不存在') || message.includes('和风天气 API 路径不存在') || message.includes('NOT FOUND')) {
+    return '和风天气接口路径不存在，请检查 API Host 配置，并确认 GeoAPI 已切换到 /geo/v2'
   }
   if (message.includes('和风天气 Geo 接口仅支持 GET 请求') || message.includes('METHOD NOT ALLOWED')) {
     return '请求方式错误，当前接口仅支持 GET'
@@ -275,7 +283,6 @@ async function fetchNominatimData(url: string, label: string) {
       throw new Error(getApiErrorMessage(payload) || `${label}错误: ${res.status}`)
     }
 
-    // Compatible with both our wrapped server API response and raw Nominatim array responses.
     if (Array.isArray(payload)) {
       return mapNominatimCandidates(payload)
     }
@@ -338,7 +345,7 @@ async function getNominatimCandidates(cityName: string) {
     try {
       return await fetchNominatimData(`/api/nominatim?q=${q}`, '服务端 Nominatim')
     } catch (serverError) {
-      console.warn('服务端 Nominatim 失败，尝试浏览器直连', serverError)
+      console.warn('[搜索] 服务端 Nominatim 失败，尝试浏览器直连', serverError)
       return await fetchNominatimData(nominatimUrl, 'Nominatim API')
     }
   } else if (serverNominatimMode === 'auto') {
@@ -429,7 +436,7 @@ async function onSearch() {
       }
     }
   } catch (err: any) {
-    console.error('搜索错误:', err)
+    console.error('[搜索] 搜索错误:', err)
     if (err.message?.includes('ECONNRESET') || err.message?.includes('fetch')) {
       error.value = '网络连接失败，请检查网络后重试'
     } else {
@@ -464,7 +471,7 @@ function copyLink() {
     try {
       document.execCommand('copy')
     } catch (err) {
-      console.warn('复制失败:', err)
+      console.warn('[订阅链接] 复制失败:', err)
     }
     document.body.removeChild(textarea)
   }

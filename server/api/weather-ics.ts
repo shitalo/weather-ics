@@ -240,7 +240,7 @@ export default defineEventHandler(async (event) => {
         }
       } catch (e) {
         // 忽略IP定位错误，继续走后续逻辑
-        console.warn('IP定位失败:', e)
+        console.warn(`[IP定位] 定位失败，继续后续流程 - ip: ${ip || 'N/A'}, 错误信息: ${e instanceof Error ? e.message : String(e)}`)
       }
     }
   }
@@ -248,7 +248,7 @@ export default defineEventHandler(async (event) => {
   if (!locationId && (!lat || !lon)) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Missing locationId or lat/lon'
+      message: '缺少 locationId 或 lat/lon 参数'
     })
   }
   
@@ -503,7 +503,7 @@ export default defineEventHandler(async (event) => {
     console.error(`[错误] 请求参数 - locationId: ${locationId || 'N/A'}, lat: ${lat || 'N/A'}, lon: ${lon || 'N/A'}, city: ${city || 'N/A'}`)
     throw createError({
       statusCode: 500,
-      statusMessage: error.message || '天气数据获取失败'
+      message: error.message || '天气数据获取失败'
     })
   }
 }) 

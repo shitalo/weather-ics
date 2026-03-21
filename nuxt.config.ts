@@ -1,4 +1,4 @@
-// https://nuxt.com/docs/api/configuration/nuxt-config
+﻿// https://nuxt.com/docs/api/configuration/nuxt-config
 
 // 自动检测部署平台
 function detectPlatform() {
@@ -66,8 +66,8 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     hefengApiKey: process.env.HEFENG_API_KEY,
-    // 和风天气API Host（可选），用于替代公共API域名
-    // 如果未配置，将使用旧的公共域名（devapi.qweather.com 和 geoapi.qweather.com）
+    // 和风天气 API Host（必需）
+    // 仅支持控制台中的专属 API Host，不再兼容旧的公共域名
     hefengApiHost: process.env.HEFENG_API_HOST,
     geoApiProvider: normalizedGeoProvider,
     // 是否启用数据库缓存功能，默认 false（不启用）
@@ -82,13 +82,12 @@ export default defineNuxtConfig({
     mysqlDatabase: process.env.MYSQL_DATABASE,
     // 历史天气数据最大天数，默认31天
     maxHistoryDays: process.env.MAX_HISTORY_DAYS ? parseInt(process.env.MAX_HISTORY_DAYS) : 31,
-    // 缓存过期时间（分钟），默认90分钟（和风天气逐天预报更新频率为60分钟）
+    // 缓存过期时间（分钟），默认90分钟（和风天气逐天天气预报更新频率为60分钟）
     cacheExpireMinutes: process.env.CACHE_EXPIRE_MINUTES ? parseInt(process.env.CACHE_EXPIRE_MINUTES) : 90,
     public: {
       geoApiProvider: normalizedGeoProvider,
       // 是否通过服务端代理访问 Nominatim，默认 false（浏览器直连）
       // 可选值：'true'（服务端代理）、'false'（浏览器直连）、'auto'（自动检测）
-      // 使用类型断言以支持字符串类型
       useServerNominatim: normalizedUseServerNominatim as any
     }
   }
